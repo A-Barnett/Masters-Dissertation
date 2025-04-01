@@ -63,6 +63,10 @@ void AProceduralTerrain::Tick(float DeltaTime)
     TerrainMeshFactory.ProcessMeshTasks();
     TerrainMeshFactory.ProcessMeshTasks();
     TerrainMeshFactory.ProcessMeshTasks();
+    TerrainMeshFactory.ProcessMeshTasks();
+    TerrainMeshFactory.ProcessMeshTasks();
+    TerrainMeshFactory.ProcessMeshTasks();
+    TerrainMeshFactory.ProcessMeshTasks();
 
     FVector PlayerPos = PlayerPawn->GetActorLocation();
     if (PlayerPos.X > ((PlayerGridPos.X * currentGridSize) + (currentGridSize))) {
@@ -123,15 +127,7 @@ void AProceduralTerrain::UpdateTerrain() {
                 // High LOD
                 TerrainComponent* component = FindTerrainComponent(GridPosition);
                 if (component != nullptr && component->GetLOD() != 1) {
-                    //to be moved
-                   /* if (component->GetLOD()==-1) {
-                        pointsToAdd.Add(std::make_pair(GridPosition, 1));
-                    }
-                    else {
-                        pointsToChange.Add(std::make_pair(GridPosition, 1));
-                    }
                     component->SetLOD(1);
-                    ComponentsToUpdate.Add(component);*/
                     terrainsToBeMoved.Add(component);
                     terrainsToMake.Add(std::make_pair(GridPosition, 1));
                 }
@@ -144,14 +140,7 @@ void AProceduralTerrain::UpdateTerrain() {
                 // Medium LOD
                 TerrainComponent* component = FindTerrainComponent(GridPosition);
                 if (component != nullptr && component->GetLOD() != 4) {
-                    /*if (component->GetLOD() == -1) {
-                        pointsToAdd.Add(std::make_pair(GridPosition, 4));
-                    }
-                    else {
-                        pointsToChange.Add(std::make_pair(GridPosition, 4));
-                    }
                     component->SetLOD(4);
-                    ComponentsToUpdate.Add(component);*/
                     terrainsToBeMoved.Add(component);
                     terrainsToMake.Add(std::make_pair(GridPosition, 4));
                 }
@@ -164,14 +153,7 @@ void AProceduralTerrain::UpdateTerrain() {
                 // Low LOD
                 TerrainComponent* component = FindTerrainComponent(GridPosition);
                 if (component != nullptr && component->GetLOD() != 8) {
-                   /* if (component->GetLOD() == -1) {
-                        pointsToAdd.Add(std::make_pair(GridPosition, 8));
-                    }
-                    else {
-                        pointsToChange.Add(std::make_pair(GridPosition,8));
-                    }
                     component->SetLOD(8);
-                    ComponentsToUpdate.Add(component);*/
                     terrainsToBeMoved.Add(component);
                     terrainsToMake.Add(std::make_pair(GridPosition, 8));
                 }
@@ -181,17 +163,11 @@ void AProceduralTerrain::UpdateTerrain() {
             }
             else if (distance <= range4)
             {
-                // Low LOD
+                // Lowest LOD
                 TerrainComponent* component = FindTerrainComponent(GridPosition);
                 if (component != nullptr && component->GetLOD() != 16) {
-                   /* if (component->GetLOD() == -1) {
-                        pointsToAdd.Add(std::make_pair(GridPosition, 16));
-                    }
-                    else {
-                        pointsToChange.Add(std::make_pair(GridPosition, 16));
-                    }
+ 
                     component->SetLOD(16);
-                    ComponentsToUpdate.Add(component); */
                     terrainsToBeMoved.Add(component);
                     terrainsToMake.Add(std::make_pair(GridPosition, 16));
                 }
@@ -202,9 +178,6 @@ void AProceduralTerrain::UpdateTerrain() {
             else {
                 TerrainComponent* component = FindTerrainComponent(GridPosition);
                 if (component != nullptr) {
-                   /* pointsToRemove.Add(std::make_pair(GridPosition, component->GetLOD()));
-                    component->SetIsActive(false);
-                    RemoveTerrainComponent(component);*/
                     terrainsToBeMoved.Add(component);
                 }
            
@@ -214,6 +187,8 @@ void AProceduralTerrain::UpdateTerrain() {
 
     UE_LOG(LogTemp, Display, TEXT("TO BE MOVED: %i"), terrainsToBeMoved.Num());
     UE_LOG(LogTemp, Display, TEXT("TO BE MADE: %i"), terrainsToMake.Num());
+
+    int terrainPiecesMade = 0;
 
     for (std::pair < FVector2D, int> terrainToMake : terrainsToMake) {
         bool foundMatch = false;
@@ -228,9 +203,12 @@ void AProceduralTerrain::UpdateTerrain() {
         }
         if (!foundMatch) {
             ComponentsToUpdate.Add(CreateTerrainComponent(terrainToMake.first, terrainToMake.second));
+            terrainPiecesMade++;
         }
 
     }
+    UE_LOG(LogTemp, Display, TEXT("New Terrains: %i"), terrainPiecesMade);
+
     ParallelFor((ComponentsToUpdate.Num()), [this, ComponentsToUpdate](int32 Index)
         {
             GenerateTerrainSection(ComponentsToUpdate[Index]);
@@ -690,23 +668,8 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
             Builder.EnableTangents();
             Builder.EnableTexCoords();
             Builder.EnableColors();
-            // Poly groups allow us to easily create a single set of buffers with multiple sections by adding an index to the triangle data
             Builder.EnablePolyGroups();
 
-            // Add our first vertex
-         /*   int32 V0 = Builder.AddVertex(FVector3f(-50.0f, 0.0f, 0.0f))
-                .SetNormalAndTangent(FVector3f(0.0f, -1.0f, 0.0f), FVector3f(1.0f, 0.0f, 0.0f))
-                .SetColor(FColor::Red)
-                .SetTexCoord(FVector2f(0.0f, 0.0f));
-            int32 V1 = 0;
-            int32 V2 = 0;*/
-
-
-            // Add our triangle, placing the vertices in counter clockwise order
-          //  Builder.AddTriangle(V0, V1, V2, 0/* This is the polygroup index */);
-           // RealtimeMesh->SetupMaterialSlot(0, "PrimaryMaterial");
-
-            ////////////////////////////////////
 
             int32 SectionSize = Width;
             int32 SectionX = Component->GetGridPosition().X;
@@ -818,28 +781,18 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
                 Builder.SetTangent(i, VertexTangents[i]);
             }
             int countNormal = 0;
-           // for (FVector3f normal : SectionNormals) {
-       //         Builder.SetNormal(countNormal, normal);
-           // }
-            //if (StartY == 0 || StartX == 0) {
-            //    UE_LOG(LogTemp, Display, TEXT("StartY %i, StartX %i, EndY %i, EndX %i, LOD %i, Section %i"), StartY, StartX, EndY, EndX, LOD, SectionSize);
-            //    UE_LOG(LogTemp, Display, TEXT("VERTS: %i, Tangents: %i, Triangles: %i"), vertsAmount, countTangent, triangleCount);
-            //}
-          
-  
-            //UProceduralMeshComponent* CurrentMeshComponent = Component->GetMeshComponent();
+
 
             Component->SetIsActive(true);
             if (!Component->GetIsInitialised()) {
            
-                TerrainMeshFactory.EnqueueMeshTask([SectionVertices, SectionTriangles, SectionNormals, SectionUVs, SectionVertexColors, Tangents, Component, StreamSet, this]()
+                TerrainMeshFactory.EnqueueMeshTask([SectionVertices,Component, StreamSet, this]()
                     {
                         FString ComponentName = FString::Printf(TEXT("MainSection %i"),Component->GetIndex());
                         FString ComponentName2 = FString::Printf(TEXT("MeshSection %i"), Component->GetIndex());
                         FRealtimeMeshLODKey key = FRealtimeMeshLODKey::FRealtimeMeshLODKey(0);
                         FRealtimeMeshSectionGroupKey GroupKey = FRealtimeMeshSectionGroupKey::Create(key, FName(ComponentName));
                         RealtimeMesh->CreateSectionGroup(GroupKey, StreamSet);
-      
                         const FRealtimeMeshSectionKey Key = FRealtimeMeshSectionKey::Create(GroupKey, FName(ComponentName2));
                         Component->SetGroupKey(GroupKey);
                         const FRealtimeMeshStreamRange StreamRange(0, SectionVertices.Num()-1, 0, SectionVertices.Num() - 1);
@@ -847,8 +800,9 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
                         sectionCongig.bCastsShadow = true;
                         sectionCongig.MaterialSlot = 0;
                         bool hasCollision = Component->GetLOD() == 1;
-                        RealtimeMesh->CreateSection(Key, sectionCongig, StreamRange,true);
-                        RealtimeMesh->UpdateSectionConfig(Key, FRealtimeMeshSectionConfig(ERealtimeMeshSectionDrawType::Static, 0), hasCollision);
+                        UE_LOG(LogTemp, Display, TEXT("COLLISION : %i , HAS: %i"), Component->GetLOD(), hasCollision);
+                        RealtimeMesh->CreateSection(Key, sectionCongig, StreamRange, hasCollision);
+                        RealtimeMesh->UpdateSectionConfig(Key, FRealtimeMeshSectionConfig(ERealtimeMeshSectionDrawType::Static, 0), true);
 
                         RealtimeMesh->UpdateSectionGroup(GroupKey, StreamSet);
                         Component->SetIsInitialised(true);
@@ -856,10 +810,8 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
                     });
             }
             else {
-                AsyncTask(ENamedThreads::GameThread,[SectionVertices, SectionTriangles, SectionNormals, SectionUVs, SectionVertexColors, Tangents, Component, StreamSet, this]()
+                AsyncTask(ENamedThreads::AnyNormalThreadNormalTask,[Component, StreamSet, this]()
                     { 
-                        FRealtimeMeshSectionGroupKey Key = Component->GetGroupKey();
-                        FName GroupKeyName = Key.Name();
                         RealtimeMesh->UpdateSectionGroup(Component->GetGroupKey(), StreamSet);
                     });
            }
