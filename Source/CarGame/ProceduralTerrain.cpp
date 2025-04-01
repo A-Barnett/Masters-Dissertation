@@ -217,7 +217,7 @@ void AProceduralTerrain::UpdateTerrain() {
 
     for (std::pair < FVector2D, int> terrainToMake : terrainsToMake) {
         bool foundMatch = false;
-     /*   for (TerrainComponent* terrainToMove : terrainsToBeMoved) {
+        for (TerrainComponent* terrainToMove : terrainsToBeMoved) {
             if (terrainToMove->GetLOD() == terrainToMake.second) {
                 foundMatch = true;
                 terrainToMove->SetGridPosition(terrainToMake.first);
@@ -225,7 +225,7 @@ void AProceduralTerrain::UpdateTerrain() {
                 terrainsToBeMoved.Remove(terrainToMove);
                 break;
             }
-        }*/
+        }
         if (!foundMatch) {
             ComponentsToUpdate.Add(CreateTerrainComponent(terrainToMake.first, terrainToMake.second));
         }
@@ -821,54 +821,47 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
            // for (FVector3f normal : SectionNormals) {
        //         Builder.SetNormal(countNormal, normal);
            // }
-            if (StartY == 0 || StartX == 0) {
-                UE_LOG(LogTemp, Display, TEXT("StartY %i, StartX %i, EndY %i, EndX %i, LOD %i, Section %i"), StartY, StartX, EndY, EndX, LOD, SectionSize);
-                UE_LOG(LogTemp, Display, TEXT("VERTS: %i, Tangents: %i, Triangles: %i"), vertsAmount, countTangent, triangleCount);
-            }
+            //if (StartY == 0 || StartX == 0) {
+            //    UE_LOG(LogTemp, Display, TEXT("StartY %i, StartX %i, EndY %i, EndX %i, LOD %i, Section %i"), StartY, StartX, EndY, EndX, LOD, SectionSize);
+            //    UE_LOG(LogTemp, Display, TEXT("VERTS: %i, Tangents: %i, Triangles: %i"), vertsAmount, countTangent, triangleCount);
+            //}
+          
   
             //UProceduralMeshComponent* CurrentMeshComponent = Component->GetMeshComponent();
 
             Component->SetIsActive(true);
             if (!Component->GetIsInitialised()) {
-                Component->SetIsInitialised(true);
+           
                 TerrainMeshFactory.EnqueueMeshTask([SectionVertices, SectionTriangles, SectionNormals, SectionUVs, SectionVertexColors, Tangents, Component, StreamSet, this]()
                     {
-                       /* FScopeLock Lock(&ComponentMutex);
-                        CurrentMeshComponent->CreateMeshSection_LinearColor(
-                            0, SectionVertices, SectionTriangles, SectionNormals, SectionUVs, SectionVertexColors, Tangents, true);*/
-                        /*                   UE_LOG(LogTemp, Log, TEXT("Mesh section created asynchronously on the game thread."));*/
-
                         FString ComponentName = FString::Printf(TEXT("MainSection %i"),Component->GetIndex());
                         FString ComponentName2 = FString::Printf(TEXT("MeshSection %i"), Component->GetIndex());
                         FRealtimeMeshLODKey key = FRealtimeMeshLODKey::FRealtimeMeshLODKey(0);
                         FRealtimeMeshSectionGroupKey GroupKey = FRealtimeMeshSectionGroupKey::Create(key, FName(ComponentName));
-                 //       FRealtimeMeshStreamSet StreamSet;
                         RealtimeMesh->CreateSectionGroup(GroupKey, StreamSet);
-
-   
-           
+      
                         const FRealtimeMeshSectionKey Key = FRealtimeMeshSectionKey::Create(GroupKey, FName(ComponentName2));
-                        Component->SetGroupKey(&GroupKey);
+                        Component->SetGroupKey(GroupKey);
                         const FRealtimeMeshStreamRange StreamRange(0, SectionVertices.Num()-1, 0, SectionVertices.Num() - 1);
                         FRealtimeMeshSectionConfig sectionCongig;
                         sectionCongig.bCastsShadow = true;
                         sectionCongig.MaterialSlot = 0;
+                        bool hasCollision = Component->GetLOD() == 1;
                         RealtimeMesh->CreateSection(Key, sectionCongig, StreamRange,true);
-                        RealtimeMesh->UpdateSectionConfig(Key, FRealtimeMeshSectionConfig(ERealtimeMeshSectionDrawType::Static, 0),true);
+                        RealtimeMesh->UpdateSectionConfig(Key, FRealtimeMeshSectionConfig(ERealtimeMeshSectionDrawType::Static, 0), hasCollision);
 
                         RealtimeMesh->UpdateSectionGroup(GroupKey, StreamSet);
+                        Component->SetIsInitialised(true);
 
                     });
             }
-            //else {
-               // AsyncTask(ENamedThreads::GameThread,[SectionVertices, SectionTriangles, SectionNormals, SectionUVs, SectionVertexColors, Tangents, Component, StreamSet, this]()
-                    {
-                       /* FScopeLock Lock(&ComponentMutex);
-                        CurrentMeshComponent->UpdateMeshSection_LinearColor(
-                            0, SectionVertices, SectionNormals, SectionUVs, SectionVertexColors, Tangents, true);*/
-                        /*                   UE_LOG(LogTemp, Log, TEXT("Mesh section created asynchronously on the game thread."));*/
-                       // RealtimeMesh->UpdateSectionGroup(*Component->GetGroupKey(), StreamSet);
-                 //   });
+            else {
+                AsyncTask(ENamedThreads::GameThread,[SectionVertices, SectionTriangles, SectionNormals, SectionUVs, SectionVertexColors, Tangents, Component, StreamSet, this]()
+                    { 
+                        FRealtimeMeshSectionGroupKey Key = Component->GetGroupKey();
+                        FName GroupKeyName = Key.Name();
+                        RealtimeMesh->UpdateSectionGroup(Component->GetGroupKey(), StreamSet);
+                    });
            }
         });
 }

@@ -31,7 +31,7 @@ private:
     bool IsActive = true;
     int Index;
     bool IsInitialised = false;
-    const FRealtimeMeshSectionGroupKey* GroupKey;
+    FRealtimeMeshSectionGroupKey GroupKey;
 
 public:
     TerrainComponent(UProceduralMeshComponent* InMeshComponent, FVector2D InGridPosition, int InLOD, int Inindex)
@@ -73,10 +73,10 @@ public:
     void SetIsInitialised(bool InIsInitialised) {
         IsInitialised = InIsInitialised;
     }
-    const FRealtimeMeshSectionGroupKey* GetGroupKey() {
+    const FRealtimeMeshSectionGroupKey GetGroupKey() {
         return GroupKey;
     }
-    void SetGroupKey(const FRealtimeMeshSectionGroupKey* InGroupKey) {
+    void SetGroupKey(const FRealtimeMeshSectionGroupKey InGroupKey) {
         GroupKey = InGroupKey;
     }
 };
