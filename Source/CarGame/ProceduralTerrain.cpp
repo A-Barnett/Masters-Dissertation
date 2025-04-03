@@ -13,10 +13,14 @@
 #include "Math/Vector2D.h"           
 #include "Math/Color.h"            
 #include "Components/SceneComponent.h"
-
-
-
-
+#include "GameFramework/Character.h"
+#include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerController.h"
+#include "GameFramework/Actor.h"
+#include "GameFramework/Controller.h"
+#include "GameFramework/MovementComponent.h"
+#include "Components/InputComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 
 AProceduralTerrain::AProceduralTerrain()
@@ -59,14 +63,16 @@ void AProceduralTerrain::BeginPlay()
 void AProceduralTerrain::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
-
+    if(GetWorld()->GetFirstPlayerController()->IsInputKeyDown(EKeys::M)) {
+        ResetPlayerPhysics();
+    }
     TerrainMeshFactory.ProcessMeshTasks();
     TerrainMeshFactory.ProcessMeshTasks();
     TerrainMeshFactory.ProcessMeshTasks();
     TerrainMeshFactory.ProcessMeshTasks();
-    TerrainMeshFactory.ProcessMeshTasks();
-    TerrainMeshFactory.ProcessMeshTasks();
-    TerrainMeshFactory.ProcessMeshTasks();
+   // TerrainMeshFactory.ProcessMeshTasks();
+  //  TerrainMeshFactory.ProcessMeshTasks();
+   // TerrainMeshFactory.ProcessMeshTasks();
 
     FVector PlayerPos = PlayerPawn->GetActorLocation();
     if (PlayerPos.X > ((PlayerGridPos.X * currentGridSize) + (currentGridSize))) {
@@ -95,6 +101,30 @@ void AProceduralTerrain::Tick(float DeltaTime)
     }
   
 }
+
+void AProceduralTerrain::ResetPlayerPhysics()
+{
+    if (!PlayerPawn) return;
+
+    // Reset rotation with Teleport flag
+    PlayerPawn->SetActorRotation(FRotator::ZeroRotator, ETeleportType::TeleportPhysics);
+
+    if (ACharacter* Character = Cast<ACharacter>(PlayerPawn))
+    {
+        if (UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement())
+        {
+            MovementComp->Velocity = FVector::ZeroVector;
+        }
+    }
+
+    if (UPrimitiveComponent* RootPrimitive = Cast<UPrimitiveComponent>(PlayerPawn->GetRootComponent()))
+    {
+        RootPrimitive->SetPhysicsLinearVelocity(FVector::ZeroVector);
+        RootPrimitive->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+    }
+}
+
+
 TArray<std::pair<FVector2D, int>> pointsToAdd;
 TArray<std::pair<FVector2D, int>> pointsToChange;
 TArray<std::pair<FVector2D, int>> pointsToRemove;
