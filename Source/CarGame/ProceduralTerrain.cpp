@@ -13,10 +13,14 @@
 #include "Math/Vector2D.h"           
 #include "Math/Color.h"            
 #include "Components/SceneComponent.h"
-
-
-
-
+#include "GameFramework/Character.h"
+#include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerController.h"
+#include "GameFramework/Actor.h"
+#include "GameFramework/Controller.h"
+#include "GameFramework/MovementComponent.h"
+#include "Components/InputComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 
 AProceduralTerrain::AProceduralTerrain()
@@ -59,14 +63,16 @@ void AProceduralTerrain::BeginPlay()
 void AProceduralTerrain::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
-
+    if(GetWorld()->GetFirstPlayerController()->IsInputKeyDown(EKeys::M)) {
+        ResetPlayerPhysics();
+    }
     TerrainMeshFactory.ProcessMeshTasks();
     TerrainMeshFactory.ProcessMeshTasks();
     TerrainMeshFactory.ProcessMeshTasks();
     TerrainMeshFactory.ProcessMeshTasks();
-    TerrainMeshFactory.ProcessMeshTasks();
-    TerrainMeshFactory.ProcessMeshTasks();
-    TerrainMeshFactory.ProcessMeshTasks();
+   // TerrainMeshFactory.ProcessMeshTasks();
+  //  TerrainMeshFactory.ProcessMeshTasks();
+   // TerrainMeshFactory.ProcessMeshTasks();
 
     FVector PlayerPos = PlayerPawn->GetActorLocation();
     if (PlayerPos.X > ((PlayerGridPos.X * currentGridSize) + (currentGridSize))) {
@@ -95,6 +101,30 @@ void AProceduralTerrain::Tick(float DeltaTime)
     }
   
 }
+
+void AProceduralTerrain::ResetPlayerPhysics()
+{
+    if (!PlayerPawn) return;
+
+    // Reset rotation with Teleport flag
+    PlayerPawn->SetActorRotation(FRotator::ZeroRotator, ETeleportType::TeleportPhysics);
+
+    if (ACharacter* Character = Cast<ACharacter>(PlayerPawn))
+    {
+        if (UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement())
+        {
+            MovementComp->Velocity = FVector::ZeroVector;
+        }
+    }
+
+    if (UPrimitiveComponent* RootPrimitive = Cast<UPrimitiveComponent>(PlayerPawn->GetRootComponent()))
+    {
+        RootPrimitive->SetPhysicsLinearVelocity(FVector::ZeroVector);
+        RootPrimitive->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+    }
+}
+
+
 TArray<std::pair<FVector2D, int>> pointsToAdd;
 TArray<std::pair<FVector2D, int>> pointsToChange;
 TArray<std::pair<FVector2D, int>> pointsToRemove;
@@ -104,6 +134,32 @@ TArray<TerrainComponent*> terrainsToBeMoved;
 
 
 void AProceduralTerrain::UpdateTerrain() {
+
+    GeneratePath();
+    SmoothPathPointsHeight(PathHeightSmooth);
+    GeneratePathMesh();
+    TArray<int32> TerrainTriangles;
+    TArray<FVector> Normals;
+    TArray<FProcMeshTangent> Tangents;
+
+    PathGrid.Empty();
+    for (const FVector& Point : PathVertices)
+    {
+        int32 GridX = FMath::FloorToInt(Point.X / GridSize);
+        int32 GridY = FMath::FloorToInt(Point.Y / GridSize);
+        PathGrid.FindOrAdd(FIntPoint(GridX, GridY)).Add(Point);
+    }
+
+    //int32 SectionSize = Width / 4;
+    //ParallelFor((4*4), [this, SectionSize](int32 Index)
+    //    {
+    //        int32 SectionX = Index % 4;
+    //        int32 SectionY = Index / 4;
+    //        GenerateTerrainSection(Index, SectionX, SectionY, SectionSize);
+    //    });
+
+    DisplayPathMesh();
+
    /* FString ComponentName = FString::Printf(TEXT("REALTIME"), TerrainComponents.Num());
     URealtimeMeshSimple* realtimeMesh = NewObject<URealtimeMeshSimple>(this, FName(*ComponentName), RF_Transactional);
     FRealtimeMeshStreamRange StreamRange;
@@ -209,10 +265,13 @@ void AProceduralTerrain::UpdateTerrain() {
     }
     UE_LOG(LogTemp, Display, TEXT("New Terrains: %i"), terrainPiecesMade);
 
-    ParallelFor((ComponentsToUpdate.Num()), [this, ComponentsToUpdate](int32 Index)
-        {
-            GenerateTerrainSection(ComponentsToUpdate[Index]);
-     });
+    //ParallelFor((ComponentsToUpdate.Num()), [this, ComponentsToUpdate](int32 Index)
+      //  {
+    for (int i = 0; i < ComponentsToUpdate.Num(); i++) {
+
+        GenerateTerrainSection(ComponentsToUpdate[i]);
+    }
+    // });
 
 }
 
@@ -527,6 +586,7 @@ void AProceduralTerrain::GeneratePath()
 
         PathPoints.Add(FinalPoint);
     }
+    NumPoints += 40;
 }
 
 
@@ -619,30 +679,6 @@ TArray<std::pair<FVector, int>> AProceduralTerrain::FindNeighbours(int32 Index, 
 void AProceduralTerrain::GenerateTerrain()
 {
     FDateTime StartTime = FDateTime::Now();
-    GeneratePath();
-    SmoothPathPointsHeight(PathHeightSmooth);
-    GeneratePathMesh();
-    TArray<int32> TerrainTriangles;
-    TArray<FVector> Normals;
-    TArray<FProcMeshTangent> Tangents;
-
-    PathGrid.Empty();
-    for (const FVector& Point : PathVertices)
-    {
-        int32 GridX = FMath::FloorToInt(Point.X / GridSize);
-        int32 GridY = FMath::FloorToInt(Point.Y / GridSize);
-        PathGrid.FindOrAdd(FIntPoint(GridX, GridY)).Add(Point);
-    }
-
-    //int32 SectionSize = Width / 4;
-    //ParallelFor((4*4), [this, SectionSize](int32 Index)
-    //    {
-    //        int32 SectionX = Index % 4;
-    //        int32 SectionY = Index / 4;
-    //        GenerateTerrainSection(Index, SectionX, SectionY, SectionSize);
-    //    });
-
-    DisplayPathMesh();
     UpdateTerrain();
 
     FDateTime EndTime = FDateTime::Now();
@@ -656,8 +692,8 @@ void AProceduralTerrain::GenerateTerrain()
 void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 {
     // Launch async task for heavy computation
-    Async(EAsyncExecution::ThreadPool, [=, this]()
-        {
+   // Async(EAsyncExecution::ThreadPool, [=, this]()
+     //   {
             ////////////////////////////////////
 
 
@@ -810,12 +846,16 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
                     });
             }
             else {
-                AsyncTask(ENamedThreads::AnyNormalThreadNormalTask,[Component, StreamSet, this]()
-                    { 
+             //   AsyncTask(ENamedThreads::AnyNormalThreadNormalTask,[Component, StreamSet, this]()
+                    //{ 
+                TerrainMeshFactory.EnqueueMeshTask([SectionVertices, Component, StreamSet, this]()
+                    {
                         RealtimeMesh->UpdateSectionGroup(Component->GetGroupKey(), StreamSet);
                     });
+             //       });
            }
-        });
+      //  });
+                    
 }
 
 void AProceduralTerrain::GeneratePathMesh()
@@ -823,6 +863,7 @@ void AProceduralTerrain::GeneratePathMesh()
     PathVertices.Empty();
     PathTriangles.Empty();
     PathNormals.Empty();
+    PathUVs.Empty();
 
     FVector PreviousForward = FVector::ForwardVector;
 

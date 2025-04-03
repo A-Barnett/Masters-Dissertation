@@ -152,6 +152,7 @@ public:
     TerrainComponent* FindTerrainComponent(const FVector2D& GridPosition);
     TerrainComponent* CreateTerrainComponent(const FVector2D& GridPosition, int LOD);
     void RemoveTerrainComponent(TerrainComponent* terrain);
+    void ResetPlayerPhysics();
 
     URealtimeMeshSimple* RealtimeMesh;
     int totalCreated = 0;
