@@ -104,6 +104,32 @@ TArray<std::pair<FVector2D, int>> pointsToRemove;
 
 
 void AProceduralTerrain::UpdateTerrain() {
+    GeneratePath();
+    SmoothPathPointsHeight(PathHeightSmooth);
+    GeneratePathMesh();
+    TArray<int32> TerrainTriangles;
+    TArray<FVector> Normals;
+    TArray<FProcMeshTangent> Tangents;
+
+    PathGrid.Empty();
+    for (const FVector& Point : PathVertices)
+    {
+        int32 GridX = FMath::FloorToInt(Point.X / GridSize);
+        int32 GridY = FMath::FloorToInt(Point.Y / GridSize);
+        PathGrid.FindOrAdd(FIntPoint(GridX, GridY)).Add(Point);
+    }
+
+    //int32 SectionSize = Width / 4;
+    //ParallelFor((4*4), [this, SectionSize](int32 Index)
+    //    {
+    //        int32 SectionX = Index % 4;
+    //        int32 SectionY = Index / 4;
+    //        GenerateTerrainSection(Index, SectionX, SectionY, SectionSize);
+    //    });
+
+    DisplayPathMesh();
+
+
     TArray<TerrainComponent*> terrainsToBeMoved;
    /* FString ComponentName = FString::Printf(TEXT("REALTIME"), TerrainComponents.Num());
     URealtimeMeshSimple* realtimeMesh = NewObject<URealtimeMeshSimple>(this, FName(*ComponentName), RF_Transactional);
@@ -482,6 +508,7 @@ FVector2D CatmullRomInterpolate(const FVector2D& P0, const FVector2D& P1, const 
 void AProceduralTerrain::GeneratePath()
 {
     PathPoints.Empty();
+    NumPoints = NumPoints += 40;
     FRandomStream RandomStream(PathSeed);
 
     FVector2D CurrentPosition(-Width * Scale * 10.0f, Height * Scale * 0.5f); // Start position
@@ -494,7 +521,7 @@ void AProceduralTerrain::GeneratePath()
     float MaxTurnAngle = 2.5f;     // Maximum allowed turn per section (in degrees)
     float CurrentTurnAngle = 0.0f;  // Keeps track of turn progress
 
-    for (int32 i = 1; i < NumPoints; ++i)
+    for (int32 i = NumPoints-799; i < NumPoints; ++i)
     {
         // Compute a new target turn every `TurnSize` points
         if (i % TurnSize == 0)
@@ -625,30 +652,7 @@ TArray<std::pair<FVector, int>> AProceduralTerrain::FindNeighbours(int32 Index, 
 void AProceduralTerrain::GenerateTerrain()
 {
     FDateTime StartTime = FDateTime::Now();
-    GeneratePath();
-    SmoothPathPointsHeight(PathHeightSmooth);
-    GeneratePathMesh();
-    TArray<int32> TerrainTriangles;
-    TArray<FVector> Normals;
-    TArray<FProcMeshTangent> Tangents;
 
-    PathGrid.Empty();
-    for (const FVector& Point : PathVertices)
-    {
-        int32 GridX = FMath::FloorToInt(Point.X / GridSize);
-        int32 GridY = FMath::FloorToInt(Point.Y / GridSize);
-        PathGrid.FindOrAdd(FIntPoint(GridX, GridY)).Add(Point);
-    }
-
-    //int32 SectionSize = Width / 4;
-    //ParallelFor((4*4), [this, SectionSize](int32 Index)
-    //    {
-    //        int32 SectionX = Index % 4;
-    //        int32 SectionY = Index / 4;
-    //        GenerateTerrainSection(Index, SectionX, SectionY, SectionSize);
-    //    });
-
-    DisplayPathMesh();
     UpdateTerrain();
 
     FDateTime EndTime = FDateTime::Now();
@@ -831,6 +835,7 @@ void AProceduralTerrain::GeneratePathMesh()
     PathVertices.Empty();
     PathTriangles.Empty();
     PathNormals.Empty();
+    PathUVs.Empty();
 
     FVector PreviousForward = FVector::ForwardVector;
 
@@ -945,7 +950,7 @@ void AProceduralTerrain::DisplayPathMesh() {
 
     // Mesh
     FString ComponentName = FString::Printf(TEXT("Path"));
-    UProceduralMeshComponent* CurrentMeshComponent = NewObject<UProceduralMeshComponent>(this, FName(*ComponentName), RF_Transactional);
+    CurrentMeshComponent = NewObject<UProceduralMeshComponent>(this, FName(*ComponentName), RF_Transactional);
     MeshComponent.Add(CurrentMeshComponent);
     CurrentMeshComponent->SetupAttachment(RootComponent);
     CurrentMeshComponent->RegisterComponent();

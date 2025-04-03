@@ -162,6 +162,7 @@ public:
     FVector2D PlayerGridPos = FVector2D(0,0);
     APawn* PlayerPawn;
     float currentGridSize;
+    UProceduralMeshComponent* CurrentMeshComponent;
 
     const float GridSize = 50.0f;
     TMap<FIntPoint, TArray<FVector>> PathGrid = {
