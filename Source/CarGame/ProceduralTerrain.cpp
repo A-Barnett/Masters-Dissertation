@@ -62,11 +62,11 @@ void AProceduralTerrain::Tick(float DeltaTime)
 
     TerrainMeshFactory.ProcessMeshTasks();
     TerrainMeshFactory.ProcessMeshTasks();
-    TerrainMeshFactory.ProcessMeshTasks();
-    TerrainMeshFactory.ProcessMeshTasks();
-    TerrainMeshFactory.ProcessMeshTasks();
-    TerrainMeshFactory.ProcessMeshTasks();
-    TerrainMeshFactory.ProcessMeshTasks();
+    //TerrainMeshFactory.ProcessMeshTasks();
+    //TerrainMeshFactory.ProcessMeshTasks();
+    //TerrainMeshFactory.ProcessMeshTasks();
+    //TerrainMeshFactory.ProcessMeshTasks();
+    //TerrainMeshFactory.ProcessMeshTasks();
 
     FVector PlayerPos = PlayerPawn->GetActorLocation();
     if (PlayerPos.X > ((PlayerGridPos.X * currentGridSize) + (currentGridSize))) {
@@ -796,8 +796,8 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
             Component->SetIsActive(true);
             if (!Component->GetIsInitialised()) {
            
-                TerrainMeshFactory.EnqueueMeshTask([SectionVertices,Component, StreamSet, this]()
-                    {
+               // TerrainMeshFactory.EnqueueMeshTask([SectionVertices,Component, StreamSet, this]()
+                  //  {
                         FString ComponentName = FString::Printf(TEXT("MainSection %i"),Component->GetIndex());
                         FString ComponentName2 = FString::Printf(TEXT("MeshSection %i"), Component->GetIndex());
                         FRealtimeMeshLODKey key = FRealtimeMeshLODKey::FRealtimeMeshLODKey(0);
@@ -816,7 +816,7 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
                         RealtimeMesh->UpdateSectionGroup(GroupKey, StreamSet);
                         Component->SetIsInitialised(true);
 
-                    });
+                  //  });
             }
             else {
                 UE_LOG(LogTemp, Display, TEXT("SHOULD NOT RUN"));
