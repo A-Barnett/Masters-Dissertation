@@ -508,7 +508,6 @@ FVector2D CatmullRomInterpolate(const FVector2D& P0, const FVector2D& P1, const 
 void AProceduralTerrain::GeneratePath()
 {
     PathPoints.Empty();
-    NumPoints = NumPoints += 40;
     FRandomStream RandomStream(PathSeed);
 
     FVector2D CurrentPosition(-Width * Scale * 10.0f, Height * Scale * 0.5f); // Start position
@@ -521,7 +520,7 @@ void AProceduralTerrain::GeneratePath()
     float MaxTurnAngle = 2.5f;     // Maximum allowed turn per section (in degrees)
     float CurrentTurnAngle = 0.0f;  // Keeps track of turn progress
 
-    for (int32 i = NumPoints-799; i < NumPoints; ++i)
+    for (int32 i = 1; i < NumPoints; ++i)
     {
         // Compute a new target turn every `TurnSize` points
         if (i % TurnSize == 0)
@@ -560,6 +559,7 @@ void AProceduralTerrain::GeneratePath()
 
         PathPoints.Add(FinalPoint);
     }
+    NumPoints = NumPoints += 40;
 }
 
 
