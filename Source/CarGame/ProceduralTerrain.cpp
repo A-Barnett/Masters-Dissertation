@@ -818,7 +818,10 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
             else {
              //   AsyncTask(ENamedThreads::AnyNormalThreadNormalTask,[Component, StreamSet, this]()
                     //{ 
+                TerrainMeshFactory.EnqueueMeshTask([SectionVertices, Component, StreamSet, this]()
+                    {
                         RealtimeMesh->UpdateSectionGroup(Component->GetGroupKey(), StreamSet);
+                    }
              //       });
            }
       //  });
