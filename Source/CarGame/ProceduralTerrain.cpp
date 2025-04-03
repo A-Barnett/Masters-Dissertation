@@ -18,7 +18,7 @@
 
 
 
-
+int count = 0;
 AProceduralTerrain::AProceduralTerrain()
 {
     PrimaryActorTick.bCanEverTick = true;
@@ -59,39 +59,42 @@ void AProceduralTerrain::BeginPlay()
 void AProceduralTerrain::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
+    if (count < 1000) {
+        count++;
 
-    TerrainMeshFactory.ProcessMeshTasks();
-    TerrainMeshFactory.ProcessMeshTasks();
-    TerrainMeshFactory.ProcessMeshTasks();
-    TerrainMeshFactory.ProcessMeshTasks();
-    TerrainMeshFactory.ProcessMeshTasks();
-    TerrainMeshFactory.ProcessMeshTasks();
-    TerrainMeshFactory.ProcessMeshTasks();
+        TerrainMeshFactory.ProcessMeshTasks();
+        TerrainMeshFactory.ProcessMeshTasks();
+        TerrainMeshFactory.ProcessMeshTasks();
+        TerrainMeshFactory.ProcessMeshTasks();
+        TerrainMeshFactory.ProcessMeshTasks();
+        TerrainMeshFactory.ProcessMeshTasks();
+        TerrainMeshFactory.ProcessMeshTasks();
 
-    FVector PlayerPos = PlayerPawn->GetActorLocation();
-    if (PlayerPos.X > ((PlayerGridPos.X * currentGridSize) + (currentGridSize))) {
-        //right
-        PlayerGridPos.X++;
-        UpdateTerrain();
-        UE_LOG(LogTemp, Display, TEXT("RIGHT"));
-    }
-    else if (PlayerPos.X < ((PlayerGridPos.X * currentGridSize))) {
-        //left
-        PlayerGridPos.X--;
-        UpdateTerrain();
-        UE_LOG(LogTemp, Display, TEXT("LEFT"));
-    }
-    else if (PlayerPos.Y > ((PlayerGridPos.Y * currentGridSize) + currentGridSize)) {
-        //top
-        PlayerGridPos.Y++;
-        UpdateTerrain();
-        UE_LOG(LogTemp, Display, TEXT("TOP"));
-    }
-    else if (PlayerPos.Y < ((PlayerGridPos.Y * currentGridSize))) {
-        //bottom
-        PlayerGridPos.Y--;
-        UpdateTerrain();
-        UE_LOG(LogTemp, Display, TEXT("BOTTOM"));
+        FVector PlayerPos = PlayerPawn->GetActorLocation();
+        if (PlayerPos.X > ((PlayerGridPos.X * currentGridSize) + (currentGridSize))) {
+            //right
+            PlayerGridPos.X++;
+            UpdateTerrain();
+            UE_LOG(LogTemp, Display, TEXT("RIGHT"));
+        }
+        else if (PlayerPos.X < ((PlayerGridPos.X * currentGridSize))) {
+            //left
+            PlayerGridPos.X--;
+            UpdateTerrain();
+            UE_LOG(LogTemp, Display, TEXT("LEFT"));
+        }
+        else if (PlayerPos.Y > ((PlayerGridPos.Y * currentGridSize) + currentGridSize)) {
+            //top
+            PlayerGridPos.Y++;
+            UpdateTerrain();
+            UE_LOG(LogTemp, Display, TEXT("TOP"));
+        }
+        else if (PlayerPos.Y < ((PlayerGridPos.Y * currentGridSize))) {
+            //bottom
+            PlayerGridPos.Y--;
+            UpdateTerrain();
+            UE_LOG(LogTemp, Display, TEXT("BOTTOM"));
+        }
     }
   
 }
@@ -801,7 +804,7 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
                         sectionCongig.MaterialSlot = 0;
                         bool hasCollision = Component->GetLOD() == 1;
                         UE_LOG(LogTemp, Display, TEXT("COLLISION : %i , HAS: %i"), Component->GetLOD(), hasCollision);
-                        RealtimeMesh->CreateSection(Key, sectionCongig, StreamRange, hasCollision);
+                        RealtimeMesh->CreateSection(Key, sectionCongig, StreamRange, true);
                         RealtimeMesh->UpdateSectionConfig(Key, FRealtimeMeshSectionConfig(ERealtimeMeshSectionDrawType::Static, 0), true);
 
                         RealtimeMesh->UpdateSectionGroup(GroupKey, StreamSet);
