@@ -100,10 +100,11 @@ TArray<std::pair<FVector2D, int>> pointsToChange;
 TArray<std::pair<FVector2D, int>> pointsToRemove;
 
 
-TArray<TerrainComponent*> terrainsToBeMoved;
+
 
 
 void AProceduralTerrain::UpdateTerrain() {
+    TArray<TerrainComponent*> terrainsToBeMoved;
    /* FString ComponentName = FString::Printf(TEXT("REALTIME"), TerrainComponents.Num());
     URealtimeMeshSimple* realtimeMesh = NewObject<URealtimeMeshSimple>(this, FName(*ComponentName), RF_Transactional);
     FRealtimeMeshStreamRange StreamRange;
@@ -189,30 +190,35 @@ void AProceduralTerrain::UpdateTerrain() {
     UE_LOG(LogTemp, Display, TEXT("TO BE MADE: %i"), terrainsToMake.Num());
 
     int terrainPiecesMade = 0;
+    for (int x = 0; x < terrainsToBeMoved.Num(); x++) {
+        RealtimeMesh->RemoveSectionGroup(terrainsToBeMoved[x]->GetGroupKey());
+        TerrainComponents.Remove(terrainsToBeMoved[x]);
+    }
 
     for (std::pair < FVector2D, int> terrainToMake : terrainsToMake) {
-        bool foundMatch = false;
-        for (TerrainComponent* terrainToMove : terrainsToBeMoved) {
-            if (terrainToMove->GetLOD() == terrainToMake.second) {
-                foundMatch = true;
-                terrainToMove->SetGridPosition(terrainToMake.first);
-                ComponentsToUpdate.Add(terrainToMove);
-                terrainsToBeMoved.Remove(terrainToMove);
-                break;
-            }
-        }
-        if (!foundMatch) {
+        //bool foundMatch = false;
+        //for (TerrainComponent* terrainToMove : terrainsToBeMoved) {
+        //    if (terrainToMove->GetLOD() == terrainToMake.second) {
+        //        foundMatch = true;
+        //        terrainToMove->SetGridPosition(terrainToMake.first);
+        //        ComponentsToUpdate.Add(terrainToMove);
+        //        terrainsToBeMoved.Remove(terrainToMove);
+        //        break;
+        //    }
+        //}
+        //if (!foundMatch) {
             ComponentsToUpdate.Add(CreateTerrainComponent(terrainToMake.first, terrainToMake.second));
             terrainPiecesMade++;
-        }
+       // }
 
     }
-    UE_LOG(LogTemp, Display, TEXT("New Terrains: %i"), terrainPiecesMade);
 
-    ParallelFor((ComponentsToUpdate.Num()), [this, ComponentsToUpdate](int32 Index)
-        {
-            GenerateTerrainSection(ComponentsToUpdate[Index]);
-     });
+  
+    UE_LOG(LogTemp, Display, TEXT("New Terrains: %i"), terrainPiecesMade);
+    UE_LOG(LogTemp, Display, TEXT("REMOVED %i"), terrainsToBeMoved.Num());
+    for (int i = 0; i < ComponentsToUpdate.Num(); i++) {
+        GenerateTerrainSection(ComponentsToUpdate[i]);
+    }
 
 }
 
@@ -249,7 +255,7 @@ TerrainComponent* AProceduralTerrain::CreateTerrainComponent(const FVector2D& Gr
     }*/
     totalCreated++;
     UE_LOG(LogTemp, Display, TEXT("CREATING MESH NUM %i"), totalCreated);
-    FString ComponentName = FString::Printf(TEXT("MeshComponent%d"), TerrainComponents.Num());
+    FString ComponentName = FString::Printf(TEXT("MeshComponent%d"), totalCreated);
    // UProceduralMeshComponent* CurrentMeshComponent = NewObject<UProceduralMeshComponent>(this, FName(*ComponentName), RF_Transactional);
   //  CurrentMeshComponent->SetMaterial(0, TerrainMaterial);
   //  CurrentMeshComponent->ContainsPhysicsTriMeshData(true);
@@ -257,7 +263,7 @@ TerrainComponent* AProceduralTerrain::CreateTerrainComponent(const FVector2D& Gr
    // MeshComponent.Add(CurrentMeshComponent);
    // CurrentMeshComponent->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
 
-    TerrainComponent* NewComponent = new TerrainComponent(nullptr, GridPosition, LOD, TerrainComponents.Num()); //nullptr
+    TerrainComponent* NewComponent = new TerrainComponent(nullptr, GridPosition, LOD, totalCreated); //nullptr
     NewComponent->SetIsActive(true);
     TerrainComponents.Add(NewComponent);
     return NewComponent;
@@ -656,8 +662,8 @@ void AProceduralTerrain::GenerateTerrain()
 void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 {
     // Launch async task for heavy computation
-    Async(EAsyncExecution::ThreadPool, [=, this]()
-        {
+  //  Async(EAsyncExecution::ThreadPool, [=, this]()
+     //   {
             ////////////////////////////////////
 
 
@@ -800,8 +806,7 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
                         sectionCongig.bCastsShadow = true;
                         sectionCongig.MaterialSlot = 0;
                         bool hasCollision = Component->GetLOD() == 1;
-                        UE_LOG(LogTemp, Display, TEXT("COLLISION : %i , HAS: %i"), Component->GetLOD(), hasCollision);
-                        RealtimeMesh->CreateSection(Key, sectionCongig, StreamRange, hasCollision);
+                        RealtimeMesh->CreateSection(Key, sectionCongig, StreamRange, true);
                         RealtimeMesh->UpdateSectionConfig(Key, FRealtimeMeshSectionConfig(ERealtimeMeshSectionDrawType::Static, 0), true);
 
                         RealtimeMesh->UpdateSectionGroup(GroupKey, StreamSet);
@@ -810,12 +815,15 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
                     });
             }
             else {
-                AsyncTask(ENamedThreads::AnyNormalThreadNormalTask,[Component, StreamSet, this]()
+                UE_LOG(LogTemp, Display, TEXT("SHOULD NOT RUN"));
+                
+                RealtimeMesh->RemoveSectionGroup(Component->GetGroupKey());
+                /*AsyncTask(ENamedThreads::AnyNormalThreadNormalTask,[Component, StreamSet, this]()
                     { 
                         RealtimeMesh->UpdateSectionGroup(Component->GetGroupKey(), StreamSet);
-                    });
+                    });*/
            }
-        });
+      //  });
 }
 
 void AProceduralTerrain::GeneratePathMesh()
