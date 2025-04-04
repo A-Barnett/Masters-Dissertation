@@ -693,7 +693,7 @@ void AProceduralTerrain::GenerateTerrain()
 void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 {
     // Launch async task for heavy computation
-    Async(EAsyncExecution::LargeThreadPool, [=, this]()
+    Async(EAsyncExecution::ThreadPool, [=, this]()
         {
             ////////////////////////////////////
 
