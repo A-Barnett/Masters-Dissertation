@@ -32,6 +32,7 @@ private:
     int Index;
     bool IsInitialised = false;
     FRealtimeMeshSectionGroupKey GroupKey;
+    FRealtimeMeshSectionKey Key;
 
 public:
     TerrainComponent(UProceduralMeshComponent* InMeshComponent, FVector2D InGridPosition, int InLOD, int Inindex)
@@ -78,6 +79,13 @@ public:
     }
     void SetGroupKey(const FRealtimeMeshSectionGroupKey InGroupKey) {
         GroupKey = InGroupKey;
+    }
+
+    const FRealtimeMeshSectionKey GetKey() {
+        return Key;
+    }
+    void SetKey(const FRealtimeMeshSectionKey InKey) {
+        Key = InKey;
     }
 };
 
@@ -138,7 +146,7 @@ class CARGAME_API AProceduralTerrain : public ARealtimeMeshActor
 
 public:
     AProceduralTerrain();
-
+    
 protected:
     virtual void BeginPlay() override;
 
