@@ -136,7 +136,7 @@ TArray<TerrainComponent*> terrainsToBeMoved;
 void AProceduralTerrain::UpdateTerrain() {
 
     GeneratePath();
-    SmoothPathPointsHeight(PathHeightSmooth);
+   // SmoothPathPointsHeight(PathHeightSmooth);
     GeneratePathMesh();
     TArray<int32> TerrainTriangles;
     TArray<FVector> Normals;
@@ -265,13 +265,10 @@ void AProceduralTerrain::UpdateTerrain() {
     }
     UE_LOG(LogTemp, Display, TEXT("New Terrains: %i"), terrainPiecesMade);
 
-    //ParallelFor((ComponentsToUpdate.Num()), [this, ComponentsToUpdate](int32 Index)
-      //  {
-    for (int i = 0; i < ComponentsToUpdate.Num(); i++) {
-
-        GenerateTerrainSection(ComponentsToUpdate[i]);
-    }
-    // });
+    ParallelFor((ComponentsToUpdate.Num()), [this, ComponentsToUpdate](int32 Index)
+     {
+        GenerateTerrainSection(ComponentsToUpdate[Index]);
+    });
 
 }
 
@@ -534,7 +531,7 @@ FVector2D CatmullRomInterpolate(const FVector2D& P0, const FVector2D& P1, const 
 
 void AProceduralTerrain::GeneratePath()
 {
-    PathPoints.Empty();
+   // PathPoints.Empty();
     FRandomStream RandomStream(PathSeed);
 
     FVector2D CurrentPosition(-Width * Scale * 10.0f, Height * Scale * 0.5f); // Start position
@@ -583,8 +580,10 @@ void AProceduralTerrain::GeneratePath()
         float T = 1.0f;
         FVector2D SmoothedPoint = CatmullRomInterpolate(P0, P1, P2, P3, T);
         FVector FinalPoint = FVector(SmoothedPoint.X, SmoothedPoint.Y, CalculateNoiseAtPoint(SmoothedPoint.X / Scale, SmoothedPoint.Y / Scale));
-
-        PathPoints.Add(FinalPoint);
+        if (NumPoints==800) {
+            PathPoints.Add(FinalPoint);
+        }
+        
     }
     NumPoints += 40;
 }
@@ -593,16 +592,18 @@ void AProceduralTerrain::GeneratePath()
 
 void AProceduralTerrain::SmoothPathPointsHeight(float smoothLevel)
 {
-    for (int32 i = 1; i < PathPoints.Num(); ++i)
-    {
-        FVector& CurrentPoint = PathPoints[i];
-        FVector& PrevPoint = PathPoints[i - 1];
+    if (NumPoints == 800) {
+        for (int32 i = 1; i < PathPoints.Num(); ++i)
+        {
+            FVector& CurrentPoint = PathPoints[i];
+            FVector& PrevPoint = PathPoints[i - 1];
 
-        // Calculate the interpolated height
-        float InterpolatedHeight = FMath::Lerp(CurrentPoint.Z, PrevPoint.Z, smoothLevel);
+            // Calculate the interpolated height
+            float InterpolatedHeight = FMath::Lerp(CurrentPoint.Z, PrevPoint.Z, smoothLevel);
 
-        // Update the height of the current point
-        CurrentPoint.Z = InterpolatedHeight;
+            // Update the height of the current point
+            CurrentPoint.Z = InterpolatedHeight;
+        }
     }
 
     // Ensure the height of the last point is smoothly adjusted
@@ -692,8 +693,8 @@ void AProceduralTerrain::GenerateTerrain()
 void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 {
     // Launch async task for heavy computation
-   // Async(EAsyncExecution::ThreadPool, [=, this]()
-     //   {
+    Async(EAsyncExecution::ThreadPool, [=, this]()
+        {
             ////////////////////////////////////
 
 
@@ -854,7 +855,7 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
                     });
              //       });
            }
-      //  });
+        });
                     
 }
 
