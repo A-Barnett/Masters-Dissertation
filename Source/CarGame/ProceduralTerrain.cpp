@@ -132,140 +132,101 @@ void AProceduralTerrain::ResetPlayerPhysics()
 
 
 
-void AProceduralTerrain::UpdateTerrain() {
+void AProceduralTerrain::UpdateTerrain()
+{
 	TArray<TerrainComponent*> terrainsToBeMoved;
 	TArray<TerrainComponent*> ComponentsToUpdate;
-	TArray< std::tuple< FVector2D, int, TerrainComponent*>> terrainsToMake; //desired grid pos and LOD
-	float range4 = 16.0f;
-	int distanceSearch = range4 + 4;
-	for (int x = -distanceSearch; x <= distanceSearch; x++) {
-		for (int y = -distanceSearch; y <= distanceSearch; y++) {
-			FVector2D GridPosition(x, y);
-			GridPosition += PlayerGridPos;
-			float distance = FVector2D::Distance(GridPosition, PlayerGridPos);
+	TArray<std::pair<FVector2D, int>> terrainsToMake;
 
-			if (distance <= 2.0f)
-			{
-				// High LOD
-				TerrainComponent* component = FindTerrainComponent(GridPosition);
-				if (component != nullptr && component->GetLOD() != 0) {
-					component->SetLOD(0);
-					component->SetGridPosition(GridPosition);
-					terrainsToBeMoved.Add(component);
-					ComponentsToUpdate.Add(component);
-					/*terrainsToBeMoved.Add(component);
-					terrainsToMake.Add(std::make_tuple(GridPosition, 0, component));*/
-				}
-				else if (component == nullptr) {
-					terrainsToMake.Add(std::make_tuple(GridPosition, 0, component));
-				}
-			}
-			else if (distance <= 4.0f)
-			{
-				// Medium LOD
-				TerrainComponent* component = FindTerrainComponent(GridPosition);
-				if (component != nullptr && component->GetLOD() != 1) {
-					component->SetLOD(1);
-					component->SetGridPosition(GridPosition);
-					terrainsToBeMoved.Add(component);
-					ComponentsToUpdate.Add(component);
-					/*terrainsToBeMoved.Add(component);
-					terrainsToMake.Add(std::make_tuple(GridPosition, 1, component));*/
-				}
-				else if (component == nullptr) {
-					terrainsToMake.Add(std::make_tuple(GridPosition, 1, component));
-				}
-			}
-			else if (distance <= 7.0f)
-			{
-				// Medium LOD
-				TerrainComponent* component = FindTerrainComponent(GridPosition);
-				if (component != nullptr && component->GetLOD() != 2) {
-					component->SetLOD(2);
-					component->SetGridPosition(GridPosition);
-					terrainsToBeMoved.Add(component);
-					ComponentsToUpdate.Add(component);
-					/*terrainsToBeMoved.Add(component);
-					terrainsToMake.Add(std::make_tuple(GridPosition, 2, component));*/
-				}
-				else if (component == nullptr) {
-					terrainsToMake.Add(std::make_tuple(GridPosition, 2, component));
-				}
-			}
-			else if (distance <= 10.0f)
-			{
-				// Low LOD
-				TerrainComponent* component = FindTerrainComponent(GridPosition);
-				if (component != nullptr && component->GetLOD() != 3) {
-					component->SetLOD(3);
-					component->SetGridPosition(GridPosition);
-					terrainsToBeMoved.Add(component);
-					ComponentsToUpdate.Add(component);
-					
-					/*terrainsToBeMoved.Add(component);
-					terrainsToMake.Add(std::make_tuple(GridPosition, 3, component));*/
-				}
-				else if (component == nullptr) {
-					terrainsToMake.Add(std::make_tuple(GridPosition, 3, component));
-				}
-			}
-			else if (distance <= range4)
-			{
-				// Lowest LOD
-				TerrainComponent* component = FindTerrainComponent(GridPosition);
-				if (component != nullptr && component->GetLOD() != 4) {
-					component->SetLOD(4);
-					component->SetGridPosition(GridPosition);
-					terrainsToBeMoved.Add(component);
-					ComponentsToUpdate.Add(component);
-					/*terrainsToBeMoved.Add(component);
-					terrainsToMake.Add(std::make_tuple(GridPosition, 4, component));*/
-				}
-				else if (component == nullptr) {
-					terrainsToMake.Add(std::make_tuple(GridPosition, 4, component));
-				}
-			}
-			else {
-				TerrainComponent* component = FindTerrainComponent(GridPosition);
-				if (component != nullptr) {
-					terrainsToBeMoved.Add(component);
-				}
+	const float range4 = 16.0f;
+	const int distanceSearch = range4 + 4;
 
-			}
-		}
-	}
-	
-	UE_LOG(LogTemp, Display, TEXT("Terrains being moved: %i"), terrainsToBeMoved.Num());
-	UE_LOG(LogTemp, Display, TEXT("Terrains required: %i"), terrainsToMake.Num());
+	// Define LOD ranges: {distanceLimit, LOD}
+	const TArray<std::pair<float, int>> LODRanges = {
+		{2.0f, 0},
+		{4.0f, 1},
+		{7.0f, 2},
+		{10.0f, 3},
+		{range4, 4}
+	};
 
-	int terrainPiecesMade = 0;
-	for (std::tuple< FVector2D, int, TerrainComponent*> terrainToMake : terrainsToMake) {
-		/*bool foundMatch = false;
-		for (TerrainComponent* terrainToMove : terrainsToBeMoved) {
-			if (terrainToMove->GetLOD() == std::get<1>(terrainToMake)) {
-				foundMatch = true;
-				terrainToMove->SetGridPosition(std::get<0>(terrainToMake));
-				if (std::get<2>(terrainToMake)) {
-					terrainToMove->SetOtherBuilder(std::get<2>(terrainToMake)->MovePrevBuilder());
-				}
-				ComponentsToUpdate.Add(terrainToMove);
-				terrainsToBeMoved.Remove(terrainToMove);
-				break;
-			}
-		}
-		if (!foundMatch) {*/
-			ComponentsToUpdate.Add(CreateTerrainComponent(std::get<0>(terrainToMake), std::get<1>(terrainToMake)));
-			terrainPiecesMade++;
-		//}
-
-	}
-	UE_LOG(LogTemp, Display, TEXT("New Terrains: %i"), terrainPiecesMade);
-
-	ParallelFor((ComponentsToUpdate.Num()), [this, ComponentsToUpdate](int32 Index)
+	auto FindLODForDistance = [&](float distance) -> int
 		{
-			GenerateTerrainSection(ComponentsToUpdate[Index]);
-		});
+			for (const auto& pair : LODRanges)
+			{
+				if (distance <= pair.first)
+					return pair.second;
+			}
+			return -1; // Out of range
+		};
 
+	for (int x = -distanceSearch; x <= distanceSearch; ++x)
+	{
+		for (int y = -distanceSearch; y <= distanceSearch; ++y)
+		{
+			FVector2D GridPosition = PlayerGridPos + FVector2D(x, y);
+			const float distance = FVector2D::Distance(GridPosition, PlayerGridPos);
+			const int targetLOD = FindLODForDistance(distance);
+
+			TerrainComponent* component = FindTerrainComponent(GridPosition);
+
+			if (targetLOD != -1)
+			{
+				if (component)
+				{
+					if (component->GetLOD() != targetLOD)
+					{
+						component->SetLOD(targetLOD);
+						component->SetGridPosition(GridPosition);
+						component->SetIsNewPos(false);
+						ComponentsToUpdate.Add(component);
+					}
+				}
+				else
+				{
+					terrainsToMake.Add({ GridPosition, targetLOD });
+				}
+			}
+			else if (component)
+			{
+				terrainsToBeMoved.Add(component);
+			}
+		}
+	}
+
+	// Try to reuse old terrain components before creating new ones
+	int terrainPiecesMade = 0;
+	for (int i = 0; i < terrainsToMake.Num(); ++i)
+	{
+		const FVector2D& GridPos = terrainsToMake[i].first;
+		const int LOD = terrainsToMake[i].second;
+
+		if (i < terrainsToBeMoved.Num())
+		{
+			TerrainComponent* reusable = terrainsToBeMoved[i];
+			reusable->SetGridPosition(GridPos);
+			reusable->SetLOD(LOD);
+			reusable->SetIsNewPos(true);
+			ComponentsToUpdate.Add(reusable);
+		}
+		else
+		{
+			ComponentsToUpdate.Add(CreateTerrainComponent(GridPos, LOD));
+			++terrainPiecesMade;
+		}
+	}
+
+	// Logging
+	UE_LOG(LogTemp, Display, TEXT("New Terrains needed: %i"), terrainsToMake.Num());
+	UE_LOG(LogTemp, Display, TEXT("Old Terrains no longer needed: %i"), terrainsToBeMoved.Num());
+	UE_LOG(LogTemp, Display, TEXT("New Terrains made: %i"), terrainPiecesMade);
+	UE_LOG(LogTemp, Display, TEXT("Total Terrains updated: %i"), ComponentsToUpdate.Num());
+
+	// Generate terrain in parallel
+	ParallelFor(ComponentsToUpdate.Num(), [this, ComponentsToUpdate](int32 Index)
+	{
+		GenerateTerrainSection(ComponentsToUpdate[Index]);
+	});
 }
 
 
@@ -489,15 +450,10 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 	Async(EAsyncExecution::ThreadPool, [=, this]()
 		{
 			////////////////////////////////////
-			auto* StoredBuilder = Component->GetOtherBuilder();
-			if (StoredBuilder) {
-				// Example usage:
-				int32 OldVertexCount = StoredBuilder->NumVertices();
-				UE_LOG(LogTemp, Display, TEXT("TARGET VERTS: %i, TARGET LOD %i"), OldVertexCount, Component->GetLOD());
-			}
+			auto* StoredBuilder = Component->GetPrevBuilder();
+
 			TSharedPtr<FRealtimeMeshStreamSet> StreamSet = MakeShared<FRealtimeMeshStreamSet>();
 			auto BuilderPtr = MakeUnique<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>>(*StreamSet);
-
 			auto& Builder = *BuilderPtr;;
 		
 			// here we go ahead and enable all the basic mesh data parts
@@ -518,21 +474,73 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 			int32 totalSize = vertsPerRow * vertsPerRow;
 
 
-
 			// Generate vertices and UVs
 			int vertsAmount = 0;
+			bool set = false;
+			if (StoredBuilder && !Component->GetIsNewPos()) {
+				int32 OldLOD = pow(2, Component->GetOldLOD());
+				if (Component->GetOldLOD() < Component->GetLOD()) {
+					int32 SamplingFactor = pow(2, Component->GetLOD()) / pow(2, Component->GetOldLOD()); // Downsample ratio
+					int32 OldvertsPerRow = (SectionSize / OldLOD) + 1;
+					UE_LOG(LogTemp, Display, TEXT("OLD LOD %i, NEW LOD %i"), Component->GetOldLOD(), Component->GetLOD());
+					for (int32 y = 0; y < OldvertsPerRow; y += SamplingFactor) {
+						for (int32 x = 0; x < OldvertsPerRow; x += SamplingFactor) {
+							int32 OldIndex = y * OldvertsPerRow + x; // Map old vertex to reduced grid
+							Builder.AddVertex(StoredBuilder->GetPosition(OldIndex));
+							vertsAmount++;
+						}
+					}
+					UE_LOG(LogTemp, Display, TEXT("DOWN %i"), vertsAmount);
+					set = true;
+				}
+				else if(Component->GetOldLOD() > Component->GetLOD()) {
+					int32 SamplingFactor = pow(2, Component->GetOldLOD()) / pow(2, Component->GetLOD()); // Upsample ratio
+					int32 OldvertsPerRow = (SectionSize / OldLOD) + 1;
+					int32 OldtotalSize = OldvertsPerRow * OldvertsPerRow; // Total size of stored array
+					int32 pointsUsed = 0;
+					for (int32 y = StartY; y <= EndY; y += LOD) {
+						for (int32 x = StartX; x <= EndX; x += LOD) {
+							// Map to old vertex position if available
+							int32 SampledY = (y - StartY) / SamplingFactor;
+							int32 SampledX = (x - StartX) / SamplingFactor;
+							int32 OldIndex = SampledY * OldvertsPerRow + SampledX;
 
-			for (int32 y = StartY; y <= EndY; y += LOD)
-			{
-				for (int32 x = StartX; x <= EndX; x += LOD)
+							if ((SampledY < OldvertsPerRow) && (SampledX < OldvertsPerRow) && (pointsUsed < OldtotalSize)) {
+								// Safe index check and sampling
+								Builder.AddVertex(StoredBuilder->GetPosition(pointsUsed)); // Sample from old vertex
+								pointsUsed++;
+							}
+							else {
+								// Generate new vertex if out of bounds or misaligned
+								float Z = CalculateHeight(x, y);
+								Builder.AddVertex(FVector3f(x * Scale, y * Scale, Z))
+									.SetTexCoord(FVector2f(
+										static_cast<float>(x - StartX) / SectionSize,
+										static_cast<float>(y - StartY) / SectionSize
+									) * UVScale);
+							}
+							vertsAmount++;
+						}
+					}
+					UE_LOG(LogTemp, Display, TEXT("UP %i, LOD: %i"), pointsUsed, Component->GetOldLOD());
+					set = true;
+				}
+
+				
+			}
+			if(!set) {
+				for (int32 y = StartY; y <= EndY; y += LOD)
 				{
-					float Z = CalculateHeight(x, y);
-					Builder.AddVertex(FVector3f(x * Scale, y * Scale, Z))
-						.SetTexCoord(FVector2f(
-							static_cast<float>(x - StartX) / SectionSize,
-							static_cast<float>(y - StartY) / SectionSize
-						) * UVScale);
-					vertsAmount++;
+					for (int32 x = StartX; x <= EndX; x += LOD)
+					{
+						float Z = CalculateHeight(x, y);
+						Builder.AddVertex(FVector3f(x * Scale, y * Scale, Z))
+							.SetTexCoord(FVector2f(
+								static_cast<float>(x - StartX) / SectionSize,
+								static_cast<float>(y - StartY) / SectionSize
+							) * UVScale);
+						vertsAmount++;
+					}
 				}
 			}
 
@@ -566,46 +574,45 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 				VertexTangents[i] = FVector3f::ZeroVector;
 			}
 
-			for (int32 i = 0; i < triangleCount; i++)
-			{
-	
+			//for (int32 i = 0; i < triangleCount; i++)
+			//{
 
-				TIndex3<uint32> Index = Builder.GetTriangle(i);
-				const FVector3f& Vertex0 = Builder.GetPosition(Index[0]);
-				const FVector3f& Vertex1 = Builder.GetPosition(Index[1]);
-				const FVector3f& Vertex2 = Builder.GetPosition(Index[2]);
+			//	TIndex3<uint32> Index = Builder.GetTriangle(i);
+			//	const FVector3f& Vertex0 = Builder.GetPosition(Index[0]);
+			//	const FVector3f& Vertex1 = Builder.GetPosition(Index[1]);
+			//	const FVector3f& Vertex2 = Builder.GetPosition(Index[2]);
 
-				// Calculate edges
-				FVector3f Edge1 = Vertex1 - Vertex0;
-				FVector3f Edge2 = Vertex2 - Vertex0;
+			//	// Calculate edges
+			//	FVector3f Edge1 = Vertex1 - Vertex0;
+			//	FVector3f Edge2 = Vertex2 - Vertex0;
 
-				// Calculate the face normal using the cross product
-				FVector3f FaceNormal = FVector3f::CrossProduct(Edge1, Edge2).GetSafeNormal() * -1.0f;
+			//	// Calculate the face normal using the cross product
+			//	FVector3f FaceNormal = FVector3f::CrossProduct(Edge1, Edge2).GetSafeNormal() * -1.0f;
 
-				// Accumulate normals for each vertex in the triangle
-				VertexNormals[Index[0]] += FaceNormal;
-				VertexNormals[Index[1]] += FaceNormal;
-				VertexNormals[Index[2]] += FaceNormal;
+			//	// Accumulate normals for each vertex in the triangle
+			//	VertexNormals[Index[0]] += FaceNormal;
+			//	VertexNormals[Index[1]] += FaceNormal;
+			//	VertexNormals[Index[2]] += FaceNormal;
 
-				// Generate a tangent using an arbitrary orthogonal vector to the normal
-				FVector3f Tangent = FVector3f::CrossProduct(FaceNormal, Edge1).GetSafeNormal();
+			//	// Generate a tangent using an arbitrary orthogonal vector to the normal
+			//	FVector3f Tangent = FVector3f::CrossProduct(FaceNormal, Edge1).GetSafeNormal();
 
-				// Accumulate tangents for each vertex in the triangle
-				VertexTangents[Index[0]] += Tangent;
-				VertexTangents[Index[1]] += Tangent;
-				VertexTangents[Index[2]] += Tangent;
-			}
+			//	// Accumulate tangents for each vertex in the triangle
+			//	VertexTangents[Index[0]] += Tangent;
+			//	VertexTangents[Index[1]] += Tangent;
+			//	VertexTangents[Index[2]] += Tangent;
+			//}
 
-			// Normalize and set normals and tangents
-			for (int32 i = 0; i < totalSize; i++)
-			{
-				VertexNormals[i].Normalize();
-				//UE_LOG(LogTemp, Warning, TEXT("Normal %d: %s"), i, *VertexNormals[i].ToString());
-				Builder.SetNormal(i, VertexNormals[i]);
+			//// Normalize and set normals and tangents
+			//for (int32 i = 0; i < totalSize; i++)
+			//{
+			//	VertexNormals[i].Normalize();
+			//	//UE_LOG(LogTemp, Warning, TEXT("Normal %d: %s"), i, *VertexNormals[i].ToString());
+			//	Builder.SetNormal(i, VertexNormals[i]);
 
-				VertexTangents[i].Normalize();
-				Builder.SetTangent(i, VertexTangents[i]);
-			}
+			//	VertexTangents[i].Normalize();
+			//	Builder.SetTangent(i, VertexTangents[i]);
+			//}
 			
 			Component->SetIsActive(true);
 			if (!Component->GetIsInitialised()) {
@@ -638,7 +645,8 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 				RealtimeMesh->UpdateSectionGroup(Component->GetGroupKey(), *StreamSet);
 			}
 			int32 VertexCount = Builder.NumVertices();
-			UE_LOG(LogTemp, Display, TEXT("SET VERTS: %i, SET LOD %i"), VertexCount, Component->GetLOD());
+			//UE_LOG(LogTemp, Display, TEXT("SET VERTS: %i, SET LOD %i"), VertexCount, Component->GetLOD());
+			Component->SetOldLOD(Component->GetLOD());
 			Component->SetPrevBuilder(MoveTemp(BuilderPtr));
 			Component->SetPrevStreamset(MoveTemp(StreamSet));
 		});

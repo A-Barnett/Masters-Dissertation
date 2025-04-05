@@ -28,6 +28,7 @@ private:
     UProceduralMeshComponent* MeshComponent;
     FVector2D GridPosition;
     int LOD;
+    int OldLOD;
     bool IsActive = true;
     int Index;
     bool IsInitialised = false;
@@ -35,8 +36,8 @@ private:
     FRealtimeMeshSectionKey Key;
     TUniquePtr<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>> PrevBuilder;
     TSharedPtr<FRealtimeMeshStreamSet> PrevStreamSet;
-    TUniquePtr<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>> OtherBuilder;
-    TSharedPtr<FRealtimeMeshStreamSet> OtherStreamSet;
+    bool isNewPos = true;
+
 
 public:
     TerrainComponent(UProceduralMeshComponent* InMeshComponent, FVector2D InGridPosition, int InLOD, int Inindex)
@@ -100,33 +101,25 @@ public:
         return PrevBuilder.Get();
     }
 
-    FRealtimeMeshStreamSet* GetPrevStreamset() {
-        return PrevStreamSet.Get();
-    }
-
     void SetPrevStreamset(TSharedPtr<FRealtimeMeshStreamSet> StreamSetIn) {
         PrevStreamSet = MoveTemp(StreamSetIn);
     }
 
-    void SetOtherBuilder(TUniquePtr<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>>&& InBuilder) {
-        OtherBuilder = MoveTemp(InBuilder);
+    void SetIsNewPos(bool isNewPosIn) {
+        isNewPos = isNewPosIn;
     }
 
-    TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>* GetOtherBuilder() {
-        return OtherBuilder.Get();
+    bool GetIsNewPos() {
+        return isNewPos;
     }
 
-    FRealtimeMeshStreamSet* GetOtherStreamSet() {
-        return OtherStreamSet.Get();
+    int GetOldLOD() const {
+        return OldLOD;
+    }
+    void SetOldLOD(int InLOD) {
+        OldLOD = InLOD;
     }
 
-    void SetOtherStreamSet(TSharedPtr<FRealtimeMeshStreamSet> StreamSetIn) {
-        OtherStreamSet = MoveTemp(StreamSetIn);
-    }
-
-    TUniquePtr<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>>&& MovePrevBuilder() {
-        return MoveTemp(PrevBuilder);
-    }
 };
 
 class MeshGenerationFactory
