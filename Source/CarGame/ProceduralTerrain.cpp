@@ -463,7 +463,6 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 			// here we go ahead and enable all the basic mesh data parts
 			Builder.EnableTangents();
 			Builder.EnableTexCoords();
-			Builder.EnableColors();
 			Builder.EnablePolyGroups();
 
 
@@ -475,7 +474,9 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 			int32 EndX = StartX + SectionSize;
 			int32 EndY = StartY + SectionSize;
 			int32 LOD = pow(2, Component->GetLOD());
-			int32 totalSize = (SectionSize / LOD) * (SectionSize / LOD);
+			int32 vertsPerRow = (SectionSize / LOD) + 1;
+			int32 totalSize = vertsPerRow * vertsPerRow;
+
 
 
 			// Generate vertices and UVs
@@ -486,78 +487,80 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 				for (int32 x = StartX; x <= EndX; x += LOD)
 				{
 					float Z = CalculateHeight(x, y);
-					Builder.AddVertex(FVector3f(x * Scale, y * Scale, Z)).SetTexCoord(FVector2f(static_cast<float>(x) / Width, static_cast<float>(y) / Height) * UVScale).SetColor(FColor::White);
+					Builder.AddVertex(FVector3f(x * Scale, y * Scale, Z))
+						.SetTexCoord(FVector2f(
+							static_cast<float>(x - StartX) / SectionSize,
+							static_cast<float>(y - StartY) / SectionSize
+						) * UVScale);
 					vertsAmount++;
 				}
 			}
 
 			int triangleCount = 0;
-			// Generate triangles
-			for (int32 y = 0; y <= SectionSize; y += LOD)
+
+			for (int32 y = 0; y < SectionSize; y += LOD)
 			{
-				for (int32 x = 0; x <= SectionSize; x += LOD)
+				for (int32 x = 0; x < SectionSize; x += LOD)
 				{
 					int32 CurrentRow = y / LOD;
 					int32 NextRow = (y + LOD) / LOD;
 
-					int32 CurrentIndex = CurrentRow * ((SectionSize / LOD) + 1) + (x / LOD);
+					int32 CurrentIndex = CurrentRow * vertsPerRow + (x / LOD);
 					int32 RightIndex = CurrentIndex + 1;
-					int32 BottomIndex = NextRow * ((SectionSize / LOD) + 1) + (x / LOD);
+					int32 BottomIndex = NextRow * vertsPerRow + (x / LOD);
 					int32 BottomRightIndex = BottomIndex + 1;
 
-					if (x + LOD <= SectionSize && y + LOD <= SectionSize)
-					{
-						Builder.AddTriangle(CurrentIndex, BottomIndex, RightIndex, 0);
-						Builder.AddTriangle(RightIndex, BottomIndex, BottomRightIndex, 0);
-						triangleCount += 2;
-					}
+					Builder.AddTriangle(CurrentIndex, BottomIndex, RightIndex, 0);
+					Builder.AddTriangle(RightIndex, BottomIndex, BottomRightIndex, 0);
+					triangleCount += 2;
 				}
 			}
+
+
 
 			// Calculate normals and tangents without using texture coordinates
 			TArray<FVector3f> VertexNormals;
 			VertexNormals.SetNum(totalSize, false);
-
 			TArray<FVector3f> VertexTangents;
 			VertexTangents.SetNum(totalSize, false);
-			UE_LOG(LogTemp, Display, TEXT("TRAINGLES %i, VERTS %i, TOTAL %i"),triangleCount, vertsAmount, totalSize);
-			//for (int32 i = 0; i < triangleCount; i++)
-			//{
-			//	TIndex3<uint32> Index = Builder.GetTriangle(i);
-			//	const FVector3f& Vertex0 = Builder.GetPosition(Index[0]);
-			//	const FVector3f& Vertex1 = Builder.GetPosition(Index[1]);
-			//	const FVector3f& Vertex2 = Builder.GetPosition(Index[2]);
 
-			//	// Calculate edges
-			//	FVector3f Edge1 = Vertex1 - Vertex0;
-			//	FVector3f Edge2 = Vertex2 - Vertex0;
+			for (int32 i = 0; i < triangleCount; i++)
+			{
+				TIndex3<uint32> Index = Builder.GetTriangle(i);
+				const FVector3f& Vertex0 = Builder.GetPosition(Index[0]);
+				const FVector3f& Vertex1 = Builder.GetPosition(Index[1]);
+				const FVector3f& Vertex2 = Builder.GetPosition(Index[2]);
 
-			//	// Calculate the face normal using the cross product
-			//	FVector3f FaceNormal = FVector3f::CrossProduct(Edge1, Edge2).GetSafeNormal();
+				// Calculate edges
+				FVector3f Edge1 = Vertex1 - Vertex0;
+				FVector3f Edge2 = Vertex2 - Vertex0;
 
-			//	// Accumulate normals for each vertex in the triangle
-			//	VertexNormals[Index[0]] += FaceNormal;
-			//	VertexNormals[Index[1]] += FaceNormal;
-			//	VertexNormals[Index[2]] += FaceNormal;
+				// Calculate the face normal using the cross product
+				FVector3f FaceNormal = FVector3f::CrossProduct(Edge1, Edge2).GetSafeNormal();
 
-			//	// Generate a tangent using an arbitrary orthogonal vector to the normal
-			//	FVector3f Tangent = FVector3f::CrossProduct(FaceNormal, Edge1).GetSafeNormal();
+				// Accumulate normals for each vertex in the triangle
+				VertexNormals[Index[0]] += FaceNormal;
+				VertexNormals[Index[1]] += FaceNormal;
+				VertexNormals[Index[2]] += FaceNormal;
 
-			//	// Accumulate tangents for each vertex in the triangle
-			//	VertexTangents[Index[0]] += Tangent;
-			//	VertexTangents[Index[1]] += Tangent;
-			//	VertexTangents[Index[2]] += Tangent;
-			//}
+				// Generate a tangent using an arbitrary orthogonal vector to the normal
+				FVector3f Tangent = FVector3f::CrossProduct(FaceNormal, Edge1).GetSafeNormal();
 
-			//// Normalize and set normals and tangents
-			//for (int32 i = 0; i < 10; i++)
-			//{
+				// Accumulate tangents for each vertex in the triangle
+				VertexTangents[Index[0]] += Tangent;
+				VertexTangents[Index[1]] += Tangent;
+				VertexTangents[Index[2]] += Tangent;
+			}
+
+			// Normalize and set normals and tangents
+			for (int32 i = 0; i < totalSize; i++)
+			{
 			//	VertexNormals[i].Normalize();
-			//	Builder.SetNormal(i, VertexNormals[i]);
+				//Builder.SetNormal(i, VertexNormals[i]);
 
-			//	VertexTangents[i].Normalize();
-			//	Builder.SetTangent(i, VertexTangents[i]);
-			//}
+				VertexTangents[i].Normalize();
+				Builder.SetTangent(i, VertexTangents[i]);
+			}
 
 
 			Component->SetIsActive(true);
