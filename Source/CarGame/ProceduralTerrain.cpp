@@ -46,6 +46,7 @@ void AProceduralTerrain::BeginPlay()
 	CollisionConfig.bUseComplexAsSimpleCollision = true;
 	CollisionConfig.bShouldFastCookMeshes = true;
 	RealtimeMeshComponent->SetMobility(EComponentMobility::Static);
+	RealtimeMeshComponent->SetCastShadow(false);
 	RealtimeMeshComponent->SetGenerateOverlapEvents(false);
 	RealtimeMeshComponent->SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
 	RealtimeMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
