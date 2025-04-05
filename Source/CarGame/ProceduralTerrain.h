@@ -32,6 +32,7 @@ private:
     int Index;
     bool IsInitialised = false;
     FRealtimeMeshSectionGroupKey GroupKey;
+    FRealtimeMeshSectionKey Key;
 
 public:
     TerrainComponent(UProceduralMeshComponent* InMeshComponent, FVector2D InGridPosition, int InLOD, int Inindex)
@@ -78,6 +79,13 @@ public:
     }
     void SetGroupKey(const FRealtimeMeshSectionGroupKey InGroupKey) {
         GroupKey = InGroupKey;
+    }
+
+    const FRealtimeMeshSectionKey GetKey() {
+        return Key;
+    }
+    void SetKey(const FRealtimeMeshSectionKey InKey) {
+        Key = InKey;
     }
 };
 
@@ -138,15 +146,13 @@ class CARGAME_API AProceduralTerrain : public ARealtimeMeshActor
 
 public:
     AProceduralTerrain();
-
+    
 protected:
     virtual void BeginPlay() override;
 
 public:
     virtual void Tick(float DeltaTime) override;
-    TArray < std::pair<FVector, int>> FindNeighbours(int32 Index, int32 depth, TArray<FVector> SectionVertices, int SectionSize);
-    TArray < std::pair<int32, int32>> FindNeighboursIndicies(int32 X, int32 Y, int depth) const;
-    float AverageHeightNeighbours(int32 X, int32 Y, int depth) const;
+   
     void SmoothPathPointsHeight(float smoothLevel);
     void UpdateTerrain();
     TerrainComponent* FindTerrainComponent(const FVector2D& GridPosition);
@@ -286,14 +292,12 @@ public:
     void GenerateTerrain();
 
 private:
-    void Remove();
     float CalculateHeight(int32 X, int32 Y) const;
     float CalculateHeightOnPath(int32 X, int32 Y) const;
     float CalculateNoiseAtPoint(int32 X, int32 Y) const;
     void GeneratePath();
     bool IsOnPath(int32 X, int32 Y, bool useOffset) const;
     float DistFromPath(int32 X, int32 Y, bool useOffset) const;
-    float IsNextToPath(int32 X, int32 Y) const;
     void GenerateTerrainSection(TerrainComponent* component);
     void GeneratePathMesh();
     void DisplayPathMesh();
