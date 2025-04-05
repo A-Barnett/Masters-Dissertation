@@ -135,7 +135,7 @@ void AProceduralTerrain::ResetPlayerPhysics()
 void AProceduralTerrain::UpdateTerrain() {
 	TArray<TerrainComponent*> terrainsToBeMoved;
 	TArray<TerrainComponent*> ComponentsToUpdate;
-	TArray<std::pair<FVector2D, int>> terrainsToMake; //desired grid pos and LOD
+	TArray< std::tuple< FVector2D, int, TerrainComponent*>> terrainsToMake; //desired grid pos and LOD
 	float range4 = 16.0f;
 	int distanceSearch = range4 + 4;
 	for (int x = -distanceSearch; x <= distanceSearch; x++) {
@@ -150,24 +150,46 @@ void AProceduralTerrain::UpdateTerrain() {
 				TerrainComponent* component = FindTerrainComponent(GridPosition);
 				if (component != nullptr && component->GetLOD() != 0) {
 					component->SetLOD(0);
+					component->SetGridPosition(GridPosition);
 					terrainsToBeMoved.Add(component);
-					terrainsToMake.Add(std::make_pair(GridPosition, 0));
+					ComponentsToUpdate.Add(component);
+					/*terrainsToBeMoved.Add(component);
+					terrainsToMake.Add(std::make_tuple(GridPosition, 0, component));*/
 				}
 				else if (component == nullptr) {
-					terrainsToMake.Add(std::make_pair(GridPosition, 0));
+					terrainsToMake.Add(std::make_tuple(GridPosition, 0, component));
 				}
 			}
-			else if (distance <= 6.0f)
+			else if (distance <= 4.0f)
 			{
 				// Medium LOD
 				TerrainComponent* component = FindTerrainComponent(GridPosition);
 				if (component != nullptr && component->GetLOD() != 1) {
 					component->SetLOD(1);
+					component->SetGridPosition(GridPosition);
 					terrainsToBeMoved.Add(component);
-					terrainsToMake.Add(std::make_pair(GridPosition, 1));
+					ComponentsToUpdate.Add(component);
+					/*terrainsToBeMoved.Add(component);
+					terrainsToMake.Add(std::make_tuple(GridPosition, 1, component));*/
 				}
 				else if (component == nullptr) {
-					terrainsToMake.Add(std::make_pair(GridPosition, 1));
+					terrainsToMake.Add(std::make_tuple(GridPosition, 1, component));
+				}
+			}
+			else if (distance <= 7.0f)
+			{
+				// Medium LOD
+				TerrainComponent* component = FindTerrainComponent(GridPosition);
+				if (component != nullptr && component->GetLOD() != 2) {
+					component->SetLOD(2);
+					component->SetGridPosition(GridPosition);
+					terrainsToBeMoved.Add(component);
+					ComponentsToUpdate.Add(component);
+					/*terrainsToBeMoved.Add(component);
+					terrainsToMake.Add(std::make_tuple(GridPosition, 2, component));*/
+				}
+				else if (component == nullptr) {
+					terrainsToMake.Add(std::make_tuple(GridPosition, 2, component));
 				}
 			}
 			else if (distance <= 10.0f)
@@ -176,11 +198,15 @@ void AProceduralTerrain::UpdateTerrain() {
 				TerrainComponent* component = FindTerrainComponent(GridPosition);
 				if (component != nullptr && component->GetLOD() != 3) {
 					component->SetLOD(3);
+					component->SetGridPosition(GridPosition);
 					terrainsToBeMoved.Add(component);
-					terrainsToMake.Add(std::make_pair(GridPosition, 3));
+					ComponentsToUpdate.Add(component);
+					
+					/*terrainsToBeMoved.Add(component);
+					terrainsToMake.Add(std::make_tuple(GridPosition, 3, component));*/
 				}
 				else if (component == nullptr) {
-					terrainsToMake.Add(std::make_pair(GridPosition, 3));
+					terrainsToMake.Add(std::make_tuple(GridPosition, 3, component));
 				}
 			}
 			else if (distance <= range4)
@@ -188,13 +214,15 @@ void AProceduralTerrain::UpdateTerrain() {
 				// Lowest LOD
 				TerrainComponent* component = FindTerrainComponent(GridPosition);
 				if (component != nullptr && component->GetLOD() != 4) {
-
 					component->SetLOD(4);
+					component->SetGridPosition(GridPosition);
 					terrainsToBeMoved.Add(component);
-					terrainsToMake.Add(std::make_pair(GridPosition, 4));
+					ComponentsToUpdate.Add(component);
+					/*terrainsToBeMoved.Add(component);
+					terrainsToMake.Add(std::make_tuple(GridPosition, 4, component));*/
 				}
 				else if (component == nullptr) {
-					terrainsToMake.Add(std::make_pair(GridPosition, 4));
+					terrainsToMake.Add(std::make_tuple(GridPosition, 4, component));
 				}
 			}
 			else {
@@ -206,26 +234,29 @@ void AProceduralTerrain::UpdateTerrain() {
 			}
 		}
 	}
-
+	
 	UE_LOG(LogTemp, Display, TEXT("Terrains being moved: %i"), terrainsToBeMoved.Num());
 	UE_LOG(LogTemp, Display, TEXT("Terrains required: %i"), terrainsToMake.Num());
 
 	int terrainPiecesMade = 0;
-	for (std::pair < FVector2D, int> terrainToMake : terrainsToMake) {
-		bool foundMatch = false;
+	for (std::tuple< FVector2D, int, TerrainComponent*> terrainToMake : terrainsToMake) {
+		/*bool foundMatch = false;
 		for (TerrainComponent* terrainToMove : terrainsToBeMoved) {
-			if (terrainToMove->GetLOD() == terrainToMake.second) {
+			if (terrainToMove->GetLOD() == std::get<1>(terrainToMake)) {
 				foundMatch = true;
-				terrainToMove->SetGridPosition(terrainToMake.first);
+				terrainToMove->SetGridPosition(std::get<0>(terrainToMake));
+				if (std::get<2>(terrainToMake)) {
+					terrainToMove->SetOtherBuilder(std::get<2>(terrainToMake)->MovePrevBuilder());
+				}
 				ComponentsToUpdate.Add(terrainToMove);
 				terrainsToBeMoved.Remove(terrainToMove);
 				break;
 			}
 		}
-		if (!foundMatch) {
-			ComponentsToUpdate.Add(CreateTerrainComponent(terrainToMake.first, terrainToMake.second));
+		if (!foundMatch) {*/
+			ComponentsToUpdate.Add(CreateTerrainComponent(std::get<0>(terrainToMake), std::get<1>(terrainToMake)));
 			terrainPiecesMade++;
-		}
+		//}
 
 	}
 	UE_LOG(LogTemp, Display, TEXT("New Terrains: %i"), terrainPiecesMade);
@@ -458,10 +489,17 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 	Async(EAsyncExecution::ThreadPool, [=, this]()
 		{
 			////////////////////////////////////
+			auto* StoredBuilder = Component->GetOtherBuilder();
+			if (StoredBuilder) {
+				// Example usage:
+				int32 OldVertexCount = StoredBuilder->NumVertices();
+				UE_LOG(LogTemp, Display, TEXT("TARGET VERTS: %i, TARGET LOD %i"), OldVertexCount, Component->GetLOD());
+			}
+			TSharedPtr<FRealtimeMeshStreamSet> StreamSet = MakeShared<FRealtimeMeshStreamSet>();
+			auto BuilderPtr = MakeUnique<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>>(*StreamSet);
 
-			FRealtimeMeshStreamSet StreamSet;
-			TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1> Builder(StreamSet);
-
+			auto& Builder = *BuilderPtr;;
+		
 			// here we go ahead and enable all the basic mesh data parts
 			Builder.EnableTangents();
 			Builder.EnableTexCoords();
@@ -568,15 +606,14 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 				VertexTangents[i].Normalize();
 				Builder.SetTangent(i, VertexTangents[i]);
 			}
-
-
+			
 			Component->SetIsActive(true);
 			if (!Component->GetIsInitialised()) {
 				FString ComponentName = FString::Printf(TEXT("MainSection %i"), Component->GetIndex());
 				FString ComponentName2 = FString::Printf(TEXT("MeshSection %i"), Component->GetIndex());
 				FRealtimeMeshLODKey keyLOD = FRealtimeMeshLODKey::FRealtimeMeshLODKey(0);
 				FRealtimeMeshSectionGroupKey GroupKey = FRealtimeMeshSectionGroupKey::Create(keyLOD, FName(ComponentName));
-				RealtimeMesh->CreateSectionGroup(GroupKey, StreamSet);
+				RealtimeMesh->CreateSectionGroup(GroupKey, *StreamSet);
 				const FRealtimeMeshSectionKey Key = FRealtimeMeshSectionKey::Create(GroupKey, FName(ComponentName2));
 				Component->SetGroupKey(GroupKey);
 				Component->SetKey(Key);
@@ -588,7 +625,7 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 				bool hasCollision = Component->GetLOD() == 0;
 				RealtimeMesh->CreateSection(Key, sectionCongig, StreamRange, hasCollision);
 				RealtimeMesh->UpdateSectionConfig(Key, sectionCongig, hasCollision);
-				RealtimeMesh->UpdateSectionGroup(GroupKey, StreamSet);
+				RealtimeMesh->UpdateSectionGroup(GroupKey, *StreamSet);
 				Component->SetIsInitialised(true);
 			}
 			else if (RealtimeMesh != nullptr) {
@@ -598,10 +635,13 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 				sectionCongig.DrawType = ERealtimeMeshSectionDrawType::Static;
 				bool hasCollision = Component->GetLOD() == 0;
 				RealtimeMesh->UpdateSectionConfig(Component->GetKey(), sectionCongig, hasCollision);
-				RealtimeMesh->UpdateSectionGroup(Component->GetGroupKey(), StreamSet);
+				RealtimeMesh->UpdateSectionGroup(Component->GetGroupKey(), *StreamSet);
 			}
+			int32 VertexCount = Builder.NumVertices();
+			UE_LOG(LogTemp, Display, TEXT("SET VERTS: %i, SET LOD %i"), VertexCount, Component->GetLOD());
+			Component->SetPrevBuilder(MoveTemp(BuilderPtr));
+			Component->SetPrevStreamset(MoveTemp(StreamSet));
 		});
-
 }
 
 void AProceduralTerrain::GeneratePathMesh()

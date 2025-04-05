@@ -33,6 +33,10 @@ private:
     bool IsInitialised = false;
     FRealtimeMeshSectionGroupKey GroupKey;
     FRealtimeMeshSectionKey Key;
+    TUniquePtr<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>> PrevBuilder;
+    TSharedPtr<FRealtimeMeshStreamSet> PrevStreamSet;
+    TUniquePtr<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>> OtherBuilder;
+    TSharedPtr<FRealtimeMeshStreamSet> OtherStreamSet;
 
 public:
     TerrainComponent(UProceduralMeshComponent* InMeshComponent, FVector2D InGridPosition, int InLOD, int Inindex)
@@ -86,6 +90,42 @@ public:
     }
     void SetKey(const FRealtimeMeshSectionKey InKey) {
         Key = InKey;
+    }
+
+    void SetPrevBuilder(TUniquePtr<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>>&& InBuilder) {
+        PrevBuilder = MoveTemp(InBuilder);
+    }
+
+    TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>* GetPrevBuilder() {
+        return PrevBuilder.Get();
+    }
+
+    FRealtimeMeshStreamSet* GetPrevStreamset() {
+        return PrevStreamSet.Get();
+    }
+
+    void SetPrevStreamset(TSharedPtr<FRealtimeMeshStreamSet> StreamSetIn) {
+        PrevStreamSet = MoveTemp(StreamSetIn);
+    }
+
+    void SetOtherBuilder(TUniquePtr<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>>&& InBuilder) {
+        OtherBuilder = MoveTemp(InBuilder);
+    }
+
+    TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>* GetOtherBuilder() {
+        return OtherBuilder.Get();
+    }
+
+    FRealtimeMeshStreamSet* GetOtherStreamSet() {
+        return OtherStreamSet.Get();
+    }
+
+    void SetOtherStreamSet(TSharedPtr<FRealtimeMeshStreamSet> StreamSetIn) {
+        OtherStreamSet = MoveTemp(StreamSetIn);
+    }
+
+    TUniquePtr<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>>&& MovePrevBuilder() {
+        return MoveTemp(PrevBuilder);
     }
 };
 
