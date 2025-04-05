@@ -52,6 +52,7 @@ void AProceduralTerrain::BeginPlay()
 	SetRootComponent(RealtimeMeshComponent);
 	RealtimeMesh->SetCollisionConfig(CollisionConfig);
 	GenerateTerrain();
+
 }
 
 
@@ -497,7 +498,6 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 			}
 
 			int triangleCount = 0;
-
 			for (int32 y = 0; y < SectionSize; y += LOD)
 			{
 				for (int32 x = 0; x < SectionSize; x += LOD)
@@ -517,15 +517,20 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 			}
 
 
-
 			// Calculate normals and tangents without using texture coordinates
 			TArray<FVector3f> VertexNormals;
 			VertexNormals.SetNum(totalSize, false);
 			TArray<FVector3f> VertexTangents;
 			VertexTangents.SetNum(totalSize, false);
+			for (int32 i = 0; i < totalSize; i++) {
+				VertexNormals[i] = FVector3f::ZeroVector;
+				VertexTangents[i] = FVector3f::ZeroVector;
+			}
 
 			for (int32 i = 0; i < triangleCount; i++)
 			{
+	
+
 				TIndex3<uint32> Index = Builder.GetTriangle(i);
 				const FVector3f& Vertex0 = Builder.GetPosition(Index[0]);
 				const FVector3f& Vertex1 = Builder.GetPosition(Index[1]);
@@ -536,7 +541,7 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 				FVector3f Edge2 = Vertex2 - Vertex0;
 
 				// Calculate the face normal using the cross product
-				FVector3f FaceNormal = FVector3f::CrossProduct(Edge1, Edge2).GetSafeNormal();
+				FVector3f FaceNormal = FVector3f::CrossProduct(Edge1, Edge2).GetSafeNormal() * -1.0f;
 
 				// Accumulate normals for each vertex in the triangle
 				VertexNormals[Index[0]] += FaceNormal;
@@ -555,8 +560,9 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 			// Normalize and set normals and tangents
 			for (int32 i = 0; i < totalSize; i++)
 			{
-			//	VertexNormals[i].Normalize();
-				//Builder.SetNormal(i, VertexNormals[i]);
+				VertexNormals[i].Normalize();
+				//UE_LOG(LogTemp, Warning, TEXT("Normal %d: %s"), i, *VertexNormals[i].ToString());
+				Builder.SetNormal(i, VertexNormals[i]);
 
 				VertexTangents[i].Normalize();
 				Builder.SetTangent(i, VertexTangents[i]);
