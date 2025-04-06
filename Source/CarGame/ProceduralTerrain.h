@@ -17,6 +17,7 @@
 #include "CoreMinimal.h"
 #include "RealtimeMeshCore.h"
 #include "RealtimeMeshConfig.h"
+#include <mutex>
 
 
 
@@ -37,7 +38,7 @@ private:
     TSharedPtr<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>> PrevBuilder;
     TSharedPtr<FRealtimeMeshStreamSet> PrevStreamSet;
     bool isNewPos = true;
-
+    std::mutex MeshMutex;
 
 public:
     TerrainComponent(UProceduralMeshComponent* InMeshComponent, FVector2D InGridPosition, int InLOD, int Inindex)
@@ -118,6 +119,16 @@ public:
     }
     void SetOldLOD(int InLOD) {
         OldLOD = InLOD;
+    }
+    bool TryLockMesh() {
+        return MeshMutex.try_lock(); // Non-blocking; returns false if already locked
+    }
+
+    void UnlockMesh() {
+        MeshMutex.unlock();
+    }
+    std::mutex& GetMeshMutex() {
+        return MeshMutex;
     }
 
 };
