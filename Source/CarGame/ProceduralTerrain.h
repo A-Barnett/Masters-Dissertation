@@ -17,6 +17,7 @@
 #include "CoreMinimal.h"
 #include "RealtimeMeshCore.h"
 #include "RealtimeMeshConfig.h"
+#include <mutex>
 
 
 
@@ -28,11 +29,16 @@ private:
     UProceduralMeshComponent* MeshComponent;
     FVector2D GridPosition;
     int LOD;
+    int OldLOD;
     bool IsActive = true;
     int Index;
     bool IsInitialised = false;
     FRealtimeMeshSectionGroupKey GroupKey;
     FRealtimeMeshSectionKey Key;
+    TSharedPtr<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>> PrevBuilder;
+    TSharedPtr<FRealtimeMeshStreamSet> PrevStreamSet;
+    bool isNewPos = true;
+    std::mutex MeshMutex;
 
 public:
     TerrainComponent(UProceduralMeshComponent* InMeshComponent, FVector2D InGridPosition, int InLOD, int Inindex)
@@ -87,6 +93,40 @@ public:
     void SetKey(const FRealtimeMeshSectionKey InKey) {
         Key = InKey;
     }
+
+    void SetPrevBuilder(TSharedPtr<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>>&& InBuilder) {
+        PrevBuilder = MoveTemp(InBuilder);
+    }
+
+    TSharedPtr<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>> GetPrevBuilder() {
+        return PrevBuilder;
+    }
+
+    void SetPrevStreamset(TSharedPtr<FRealtimeMeshStreamSet> StreamSetIn) {
+        PrevStreamSet = MoveTemp(StreamSetIn);
+    }
+
+    void SetIsNewPos(bool isNewPosIn) {
+        isNewPos = isNewPosIn;
+    }
+
+    bool GetIsNewPos() {
+        return isNewPos;
+    }
+
+    int GetOldLOD() const {
+        return OldLOD;
+    }
+    void SetOldLOD(int InLOD) {
+        OldLOD = InLOD;
+    }
+    bool TryLockMesh() {
+        return MeshMutex.try_lock();
+    }
+    void UnlockMesh() {
+        MeshMutex.unlock();
+    }
+
 };
 
 class MeshGenerationFactory

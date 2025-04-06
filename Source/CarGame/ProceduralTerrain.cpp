@@ -132,109 +132,99 @@ void AProceduralTerrain::ResetPlayerPhysics()
 
 
 
-void AProceduralTerrain::UpdateTerrain() {
+void AProceduralTerrain::UpdateTerrain()
+{
 	TArray<TerrainComponent*> terrainsToBeMoved;
 	TArray<TerrainComponent*> ComponentsToUpdate;
-	TArray<std::pair<FVector2D, int>> terrainsToMake; //desired grid pos and LOD
-	float range4 = 16.0f;
-	int distanceSearch = range4 + 4;
-	for (int x = -distanceSearch; x <= distanceSearch; x++) {
-		for (int y = -distanceSearch; y <= distanceSearch; y++) {
-			FVector2D GridPosition(x, y);
-			GridPosition += PlayerGridPos;
-			float distance = FVector2D::Distance(GridPosition, PlayerGridPos);
+	TArray<std::pair<FVector2D, int>> terrainsToMake;
 
-			if (distance <= 2.0f)
-			{
-				// High LOD
-				TerrainComponent* component = FindTerrainComponent(GridPosition);
-				if (component != nullptr && component->GetLOD() != 0) {
-					component->SetLOD(0);
-					terrainsToBeMoved.Add(component);
-					terrainsToMake.Add(std::make_pair(GridPosition, 0));
-				}
-				else if (component == nullptr) {
-					terrainsToMake.Add(std::make_pair(GridPosition, 0));
-				}
-			}
-			else if (distance <= 6.0f)
-			{
-				// Medium LOD
-				TerrainComponent* component = FindTerrainComponent(GridPosition);
-				if (component != nullptr && component->GetLOD() != 1) {
-					component->SetLOD(1);
-					terrainsToBeMoved.Add(component);
-					terrainsToMake.Add(std::make_pair(GridPosition, 1));
-				}
-				else if (component == nullptr) {
-					terrainsToMake.Add(std::make_pair(GridPosition, 1));
-				}
-			}
-			else if (distance <= 10.0f)
-			{
-				// Low LOD
-				TerrainComponent* component = FindTerrainComponent(GridPosition);
-				if (component != nullptr && component->GetLOD() != 3) {
-					component->SetLOD(3);
-					terrainsToBeMoved.Add(component);
-					terrainsToMake.Add(std::make_pair(GridPosition, 3));
-				}
-				else if (component == nullptr) {
-					terrainsToMake.Add(std::make_pair(GridPosition, 3));
-				}
-			}
-			else if (distance <= range4)
-			{
-				// Lowest LOD
-				TerrainComponent* component = FindTerrainComponent(GridPosition);
-				if (component != nullptr && component->GetLOD() != 4) {
+	const float range4 = 16.0f;
+	const int distanceSearch = range4 + 4;
 
-					component->SetLOD(4);
-					terrainsToBeMoved.Add(component);
-					terrainsToMake.Add(std::make_pair(GridPosition, 4));
-				}
-				else if (component == nullptr) {
-					terrainsToMake.Add(std::make_pair(GridPosition, 4));
-				}
-			}
-			else {
-				TerrainComponent* component = FindTerrainComponent(GridPosition);
-				if (component != nullptr) {
-					terrainsToBeMoved.Add(component);
-				}
+	// Define LOD ranges: {distanceLimit, LOD}
+	const TArray<std::pair<float, int>> LODRanges = {
+		{2.0f, 0},
+		{4.0f, 1},
+		{7.0f, 2},
+		{10.0f, 3},
+		{range4, 4}
+	};
 
-			}
-		}
-	}
-
-	UE_LOG(LogTemp, Display, TEXT("Terrains being moved: %i"), terrainsToBeMoved.Num());
-	UE_LOG(LogTemp, Display, TEXT("Terrains required: %i"), terrainsToMake.Num());
-
-	int terrainPiecesMade = 0;
-	for (std::pair < FVector2D, int> terrainToMake : terrainsToMake) {
-		bool foundMatch = false;
-		for (TerrainComponent* terrainToMove : terrainsToBeMoved) {
-			if (terrainToMove->GetLOD() == terrainToMake.second) {
-				foundMatch = true;
-				terrainToMove->SetGridPosition(terrainToMake.first);
-				ComponentsToUpdate.Add(terrainToMove);
-				terrainsToBeMoved.Remove(terrainToMove);
-				break;
-			}
-		}
-		if (!foundMatch) {
-			ComponentsToUpdate.Add(CreateTerrainComponent(terrainToMake.first, terrainToMake.second));
-			terrainPiecesMade++;
-		}
-
-	}
-	UE_LOG(LogTemp, Display, TEXT("New Terrains: %i"), terrainPiecesMade);
-
-	ParallelFor((ComponentsToUpdate.Num()), [this, ComponentsToUpdate](int32 Index)
+	auto FindLODForDistance = [&](float distance) -> int
 		{
-			GenerateTerrainSection(ComponentsToUpdate[Index]);
-		});
+			for (const auto& pair : LODRanges)
+			{
+				if (distance <= pair.first)
+					return pair.second;
+			}
+			return -1; // Out of range
+		};
 
+	for (int x = -distanceSearch; x <= distanceSearch; ++x)
+	{
+		for (int y = -distanceSearch; y <= distanceSearch; ++y)
+		{
+			FVector2D GridPosition = PlayerGridPos + FVector2D(x, y);
+			const float distance = FVector2D::Distance(GridPosition, PlayerGridPos);
+			const int targetLOD = FindLODForDistance(distance);
+
+			TerrainComponent* component = FindTerrainComponent(GridPosition);
+
+			if (targetLOD != -1)
+			{
+				if (component)
+				{
+					if (component->GetLOD() != targetLOD)
+					{
+						component->SetLOD(targetLOD);
+						component->SetGridPosition(GridPosition);
+						component->SetIsNewPos(false);
+						ComponentsToUpdate.Add(component);
+					}
+				}
+				else
+				{
+					terrainsToMake.Add({ GridPosition, targetLOD });
+				}
+			}
+			else if (component)
+			{
+				terrainsToBeMoved.Add(component);
+			}
+		}
+	}
+
+	// Try to reuse old terrain components before creating new ones
+	int terrainPiecesMade = 0;
+	for (int i = 0; i < terrainsToMake.Num(); ++i)
+	{
+		const FVector2D& GridPos = terrainsToMake[i].first;
+		const int LOD = terrainsToMake[i].second;
+
+		if (i < terrainsToBeMoved.Num())
+		{
+			TerrainComponent* reusable = terrainsToBeMoved[i];
+			reusable->SetGridPosition(GridPos);
+			reusable->SetLOD(LOD);
+			reusable->SetIsNewPos(true);
+			ComponentsToUpdate.Add(reusable);
+		}
+		else
+		{
+			ComponentsToUpdate.Add(CreateTerrainComponent(GridPos, LOD));
+			++terrainPiecesMade;
+		}
+	}
+
+	// Logging
+	UE_LOG(LogTemp, Display, TEXT("New Terrains needed: %i"), terrainsToMake.Num());
+	UE_LOG(LogTemp, Display, TEXT("Old Terrains no longer needed: %i"), terrainsToBeMoved.Num());
+	UE_LOG(LogTemp, Display, TEXT("New Terrains made: %i"), terrainPiecesMade);
+	UE_LOG(LogTemp, Display, TEXT("Total Terrains updated: %i"), ComponentsToUpdate.Num());
+	ParallelFor(ComponentsToUpdate.Num(), [this, ComponentsToUpdate](int32 Index)
+	{
+		GenerateTerrainSection(ComponentsToUpdate[Index]);
+	});
 }
 
 
@@ -457,11 +447,14 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 	// Launch async task for heavy computation
 	Async(EAsyncExecution::ThreadPool, [=, this]()
 		{
+
 			////////////////////////////////////
+			TSharedPtr<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>> StoredBuilder = Component->GetPrevBuilder();
 
-			FRealtimeMeshStreamSet StreamSet;
-			TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1> Builder(StreamSet);
-
+			TSharedPtr<FRealtimeMeshStreamSet> StreamSet = MakeShared<FRealtimeMeshStreamSet>();
+			auto BuilderPtr = MakeShared<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>>(*StreamSet);
+			auto& Builder = *BuilderPtr;;
+		
 			// here we go ahead and enable all the basic mesh data parts
 			Builder.EnableTangents();
 			Builder.EnableTexCoords();
@@ -480,21 +473,91 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 			int32 totalSize = vertsPerRow * vertsPerRow;
 
 
-
 			// Generate vertices and UVs
 			int vertsAmount = 0;
-
-			for (int32 y = StartY; y <= EndY; y += LOD)
-			{
-				for (int32 x = StartX; x <= EndX; x += LOD)
+			if (Component->TryLockMesh() && StoredBuilder.Get() && StoredBuilder.Get()->NumVertices() > 0 && !Component->GetIsNewPos()) {
+				int32 OldLOD = pow(2, Component->GetOldLOD());
+				int32 pointsOutsideRange = 0;
+				if (Component->GetOldLOD() < Component->GetLOD()) {
+					int32 SamplingFactor = LOD / OldLOD; // Downsample ratio
+					int32 OldvertsPerRow = (SectionSize / OldLOD) + 1;
+					for (int32 y = 0; y < OldvertsPerRow; y += 2) {
+						for (int32 x = 0; x < OldvertsPerRow; x += 2) {
+							int32 OldIndex = y * OldvertsPerRow + x; // Map old vertex to reduced grid
+							if (StoredBuilder && vertsAmount < StoredBuilder.Get()->NumVertices()) {
+								Builder.AddVertex(StoredBuilder.Get()->GetPosition(OldIndex)).SetTexCoord(FVector2f(
+									static_cast<float>(x) / SectionSize,
+									static_cast<float>(y) / SectionSize
+								) * UVScale);
+							}
+							else {
+								float Z = CalculateHeight(x, y);
+								Builder.AddVertex(FVector3f(x * Scale, y * Scale, Z))
+									.SetTexCoord(FVector2f(
+										static_cast<float>(x/ SectionSize),
+										static_cast<float>(y  / SectionSize)
+									) * UVScale);
+								pointsOutsideRange++;
+							}
+							vertsAmount++;
+						}
+					}
+					if (pointsOutsideRange > 0) {
+						UE_LOG(LogTemp, Display, TEXT("OLD LOD %i, NEW LOD %i ,Points Failed %i ,Total Points %i, Sample Factor %i"), Component->GetOldLOD(), Component->GetLOD(), pointsOutsideRange, vertsAmount, SamplingFactor);
+					}
+				}
+				else if(Component->GetOldLOD() > Component->GetLOD()) {
+					int32 SamplingFactor = OldLOD / LOD; // Upsample ratio
+					int32 OldvertsPerRow = (SectionSize / OldLOD) + 1;
+					int32 OldtotalSize = OldvertsPerRow * OldvertsPerRow; // Total size of stored array
+					int32 pointsUsed = 0;
+			
+					for (int32 y = StartY; y <= EndY; y += LOD) {
+						for (int32 x = StartX; x <= EndX; x += LOD) {
+							// Map to old vertex position if available
+							if (StoredBuilder && y % OldLOD == 0 && x % OldLOD == 0 && pointsUsed < StoredBuilder.Get()->NumVertices()) {
+								// Safe index check and sampling
+								Builder.AddVertex(StoredBuilder.Get()->GetPosition(pointsUsed)).SetTexCoord(FVector2f(
+									static_cast<float>(x - StartX) / SectionSize,
+									static_cast<float>(y - StartY) / SectionSize
+								) * UVScale); // Sample from old vertex
+								pointsUsed++;
+							} else {
+								if (x % OldLOD == 0 && y % OldLOD == 0) {
+									pointsOutsideRange++;
+								}
+								// Generate new vertex if out of bounds or misaligned
+								float Z = CalculateHeight(x, y);
+								Builder.AddVertex(FVector3f(x * Scale, y * Scale, Z))
+									.SetTexCoord(FVector2f(
+										static_cast<float>(x - StartX) / SectionSize,
+										static_cast<float>(y - StartY) / SectionSize
+									) * UVScale);
+							}
+							vertsAmount++;
+						}
+					}
+					if (pointsOutsideRange > 0) {
+						UE_LOG(LogTemp, Display, TEXT("OLD LOD %i, NEW LOD %i ,Points Used %i ,Points Failed %i ,Total Points %i, Sample Factor %i"), Component->GetOldLOD(), Component->GetLOD(), pointsUsed, pointsOutsideRange, vertsAmount, OldLOD);
+					}
+					
+				}
+				Component->UnlockMesh();
+				
+			}
+			else {
+				for (int32 y = StartY; y <= EndY; y += LOD)
 				{
-					float Z = CalculateHeight(x, y);
-					Builder.AddVertex(FVector3f(x * Scale, y * Scale, Z))
-						.SetTexCoord(FVector2f(
-							static_cast<float>(x - StartX) / SectionSize,
-							static_cast<float>(y - StartY) / SectionSize
-						) * UVScale);
-					vertsAmount++;
+					for (int32 x = StartX; x <= EndX; x += LOD)
+					{
+						float Z = CalculateHeight(x, y);
+						Builder.AddVertex(FVector3f(x * Scale, y * Scale, Z))
+							.SetTexCoord(FVector2f(
+								static_cast<float>(x - StartX) / SectionSize,
+								static_cast<float>(y - StartY) / SectionSize
+							) * UVScale);
+						vertsAmount++;
+					}
 				}
 			}
 
@@ -527,10 +590,12 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 				VertexNormals[i] = FVector3f::ZeroVector;
 				VertexTangents[i] = FVector3f::ZeroVector;
 			}
+			if (Builder.NumVertices() <= 0) {
+				return;
+			}
 
 			for (int32 i = 0; i < triangleCount; i++)
 			{
-	
 
 				TIndex3<uint32> Index = Builder.GetTriangle(i);
 				const FVector3f& Vertex0 = Builder.GetPosition(Index[0]);
@@ -568,15 +633,14 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 				VertexTangents[i].Normalize();
 				Builder.SetTangent(i, VertexTangents[i]);
 			}
-
-
+			
 			Component->SetIsActive(true);
 			if (!Component->GetIsInitialised()) {
 				FString ComponentName = FString::Printf(TEXT("MainSection %i"), Component->GetIndex());
 				FString ComponentName2 = FString::Printf(TEXT("MeshSection %i"), Component->GetIndex());
 				FRealtimeMeshLODKey keyLOD = FRealtimeMeshLODKey::FRealtimeMeshLODKey(0);
 				FRealtimeMeshSectionGroupKey GroupKey = FRealtimeMeshSectionGroupKey::Create(keyLOD, FName(ComponentName));
-				RealtimeMesh->CreateSectionGroup(GroupKey, StreamSet);
+				RealtimeMesh->CreateSectionGroup(GroupKey, *StreamSet);
 				const FRealtimeMeshSectionKey Key = FRealtimeMeshSectionKey::Create(GroupKey, FName(ComponentName2));
 				Component->SetGroupKey(GroupKey);
 				Component->SetKey(Key);
@@ -588,7 +652,7 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 				bool hasCollision = Component->GetLOD() == 0;
 				RealtimeMesh->CreateSection(Key, sectionCongig, StreamRange, hasCollision);
 				RealtimeMesh->UpdateSectionConfig(Key, sectionCongig, hasCollision);
-				RealtimeMesh->UpdateSectionGroup(GroupKey, StreamSet);
+				RealtimeMesh->UpdateSectionGroup(GroupKey, *StreamSet);
 				Component->SetIsInitialised(true);
 			}
 			else if (RealtimeMesh != nullptr) {
@@ -598,10 +662,14 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 				sectionCongig.DrawType = ERealtimeMeshSectionDrawType::Static;
 				bool hasCollision = Component->GetLOD() == 0;
 				RealtimeMesh->UpdateSectionConfig(Component->GetKey(), sectionCongig, hasCollision);
-				RealtimeMesh->UpdateSectionGroup(Component->GetGroupKey(), StreamSet);
+				RealtimeMesh->UpdateSectionGroup(Component->GetGroupKey(), *StreamSet);
 			}
+			int32 VertexCount = Builder.NumVertices();
+			//UE_LOG(LogTemp, Display, TEXT("SET VERTS: %i, SET LOD %i"), VertexCount, Component->GetLOD());
+			Component->SetOldLOD(Component->GetLOD());
+			Component->SetPrevBuilder(BuilderPtr);
+			Component->SetPrevStreamset(MoveTemp(StreamSet));
 		});
-
 }
 
 void AProceduralTerrain::GeneratePathMesh()
