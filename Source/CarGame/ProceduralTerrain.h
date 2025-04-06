@@ -34,7 +34,7 @@ private:
     bool IsInitialised = false;
     FRealtimeMeshSectionGroupKey GroupKey;
     FRealtimeMeshSectionKey Key;
-    TUniquePtr<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>> PrevBuilder;
+    TSharedPtr<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>> PrevBuilder;
     TSharedPtr<FRealtimeMeshStreamSet> PrevStreamSet;
     bool isNewPos = true;
 
@@ -93,12 +93,12 @@ public:
         Key = InKey;
     }
 
-    void SetPrevBuilder(TUniquePtr<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>>&& InBuilder) {
+    void SetPrevBuilder(TSharedPtr<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>>&& InBuilder) {
         PrevBuilder = MoveTemp(InBuilder);
     }
 
-    TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>* GetPrevBuilder() {
-        return PrevBuilder.Get();
+    TSharedPtr<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>> GetPrevBuilder() {
+        return PrevBuilder;
     }
 
     void SetPrevStreamset(TSharedPtr<FRealtimeMeshStreamSet> StreamSetIn) {

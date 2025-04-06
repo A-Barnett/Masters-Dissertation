@@ -450,10 +450,10 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 	Async(EAsyncExecution::ThreadPool, [=, this]()
 		{
 			////////////////////////////////////
-			auto* StoredBuilder = Component->GetPrevBuilder();
+			TSharedPtr<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>> StoredBuilder = Component->GetPrevBuilder();
 
 			TSharedPtr<FRealtimeMeshStreamSet> StreamSet = MakeShared<FRealtimeMeshStreamSet>();
-			auto BuilderPtr = MakeUnique<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>>(*StreamSet);
+			auto BuilderPtr = MakeShared<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>>(*StreamSet);
 			auto& Builder = *BuilderPtr;;
 		
 			// here we go ahead and enable all the basic mesh data parts
@@ -476,41 +476,52 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 
 			// Generate vertices and UVs
 			int vertsAmount = 0;
-			bool set = false;
-			if (StoredBuilder && !Component->GetIsNewPos()) {
+			if (StoredBuilder.Get() && StoredBuilder.Get()->NumVertices() > 0 && !Component->GetIsNewPos()) {
 				int32 OldLOD = pow(2, Component->GetOldLOD());
 				if (Component->GetOldLOD() < Component->GetLOD()) {
-					int32 SamplingFactor = pow(2, Component->GetLOD()) / pow(2, Component->GetOldLOD()); // Downsample ratio
+					int32 SamplingFactor = 2; // Downsample ratio
 					int32 OldvertsPerRow = (SectionSize / OldLOD) + 1;
-					UE_LOG(LogTemp, Display, TEXT("OLD LOD %i, NEW LOD %i"), Component->GetOldLOD(), Component->GetLOD());
 					for (int32 y = 0; y < OldvertsPerRow; y += SamplingFactor) {
 						for (int32 x = 0; x < OldvertsPerRow; x += SamplingFactor) {
 							int32 OldIndex = y * OldvertsPerRow + x; // Map old vertex to reduced grid
-							Builder.AddVertex(StoredBuilder->GetPosition(OldIndex));
+							if (StoredBuilder && vertsAmount < StoredBuilder.Get()->NumVertices()) {
+								Builder.AddVertex(StoredBuilder.Get()->GetPosition(OldIndex)).SetTexCoord(FVector2f(
+									static_cast<float>(x) / SectionSize,
+									static_cast<float>(y) / SectionSize
+								) * UVScale);
+							}
+							else {
+								float Z = CalculateHeight(x, y);
+								Builder.AddVertex(FVector3f(x * Scale, y * Scale, Z))
+									.SetTexCoord(FVector2f(
+										static_cast<float>(x/ SectionSize),
+										static_cast<float>(y  / SectionSize)
+									) * UVScale);
+							}
 							vertsAmount++;
 						}
 					}
-					UE_LOG(LogTemp, Display, TEXT("DOWN %i"), vertsAmount);
-					set = true;
 				}
 				else if(Component->GetOldLOD() > Component->GetLOD()) {
-					int32 SamplingFactor = pow(2, Component->GetOldLOD()) / pow(2, Component->GetLOD()); // Upsample ratio
+					int32 SamplingFactor = 0.5; // Upsample ratio
 					int32 OldvertsPerRow = (SectionSize / OldLOD) + 1;
 					int32 OldtotalSize = OldvertsPerRow * OldvertsPerRow; // Total size of stored array
 					int32 pointsUsed = 0;
+					int32 pointsOutsideRange = 0;
 					for (int32 y = StartY; y <= EndY; y += LOD) {
 						for (int32 x = StartX; x <= EndX; x += LOD) {
 							// Map to old vertex position if available
-							int32 SampledY = (y - StartY) / SamplingFactor;
-							int32 SampledX = (x - StartX) / SamplingFactor;
-							int32 OldIndex = SampledY * OldvertsPerRow + SampledX;
-
-							if ((SampledY < OldvertsPerRow) && (SampledX < OldvertsPerRow) && (pointsUsed < OldtotalSize)) {
+							if (StoredBuilder && y % OldLOD == 0 && x % OldLOD == 0 && pointsUsed < StoredBuilder.Get()->NumVertices()) {
 								// Safe index check and sampling
-								Builder.AddVertex(StoredBuilder->GetPosition(pointsUsed)); // Sample from old vertex
+								Builder.AddVertex(StoredBuilder.Get()->GetPosition(pointsUsed)).SetTexCoord(FVector2f(
+									static_cast<float>(x - StartX) / SectionSize,
+									static_cast<float>(y - StartY) / SectionSize
+								) * UVScale); // Sample from old vertex
 								pointsUsed++;
-							}
-							else {
+							} else {
+								if (x % OldLOD == 0 && y % OldLOD == 0) {
+									pointsOutsideRange++;
+								}
 								// Generate new vertex if out of bounds or misaligned
 								float Z = CalculateHeight(x, y);
 								Builder.AddVertex(FVector3f(x * Scale, y * Scale, Z))
@@ -522,13 +533,11 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 							vertsAmount++;
 						}
 					}
-					UE_LOG(LogTemp, Display, TEXT("UP %i, LOD: %i"), pointsUsed, Component->GetOldLOD());
-					set = true;
+					//UE_LOG(LogTemp, Display, TEXT("OLD LOD %i, NEW LOD %i ,Points Used %i ,Points Failed %i ,Total Points %i, Sample Factor %i"), Component->GetOldLOD(), Component->GetLOD(), pointsUsed, pointsOutsideRange, vertsAmount, OldLOD);
 				}
-
 				
 			}
-			if(!set) {
+			else {
 				for (int32 y = StartY; y <= EndY; y += LOD)
 				{
 					for (int32 x = StartX; x <= EndX; x += LOD)
@@ -573,46 +582,49 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 				VertexNormals[i] = FVector3f::ZeroVector;
 				VertexTangents[i] = FVector3f::ZeroVector;
 			}
+			if (Builder.NumVertices() <= 0) {
+				return;
+			}
 
-			//for (int32 i = 0; i < triangleCount; i++)
-			//{
+			for (int32 i = 0; i < triangleCount; i++)
+			{
 
-			//	TIndex3<uint32> Index = Builder.GetTriangle(i);
-			//	const FVector3f& Vertex0 = Builder.GetPosition(Index[0]);
-			//	const FVector3f& Vertex1 = Builder.GetPosition(Index[1]);
-			//	const FVector3f& Vertex2 = Builder.GetPosition(Index[2]);
+				TIndex3<uint32> Index = Builder.GetTriangle(i);
+				const FVector3f& Vertex0 = Builder.GetPosition(Index[0]);
+				const FVector3f& Vertex1 = Builder.GetPosition(Index[1]);
+				const FVector3f& Vertex2 = Builder.GetPosition(Index[2]);
 
-			//	// Calculate edges
-			//	FVector3f Edge1 = Vertex1 - Vertex0;
-			//	FVector3f Edge2 = Vertex2 - Vertex0;
+				// Calculate edges
+				FVector3f Edge1 = Vertex1 - Vertex0;
+				FVector3f Edge2 = Vertex2 - Vertex0;
 
-			//	// Calculate the face normal using the cross product
-			//	FVector3f FaceNormal = FVector3f::CrossProduct(Edge1, Edge2).GetSafeNormal() * -1.0f;
+				// Calculate the face normal using the cross product
+				FVector3f FaceNormal = FVector3f::CrossProduct(Edge1, Edge2).GetSafeNormal() * -1.0f;
 
-			//	// Accumulate normals for each vertex in the triangle
-			//	VertexNormals[Index[0]] += FaceNormal;
-			//	VertexNormals[Index[1]] += FaceNormal;
-			//	VertexNormals[Index[2]] += FaceNormal;
+				// Accumulate normals for each vertex in the triangle
+				VertexNormals[Index[0]] += FaceNormal;
+				VertexNormals[Index[1]] += FaceNormal;
+				VertexNormals[Index[2]] += FaceNormal;
 
-			//	// Generate a tangent using an arbitrary orthogonal vector to the normal
-			//	FVector3f Tangent = FVector3f::CrossProduct(FaceNormal, Edge1).GetSafeNormal();
+				// Generate a tangent using an arbitrary orthogonal vector to the normal
+				FVector3f Tangent = FVector3f::CrossProduct(FaceNormal, Edge1).GetSafeNormal();
 
-			//	// Accumulate tangents for each vertex in the triangle
-			//	VertexTangents[Index[0]] += Tangent;
-			//	VertexTangents[Index[1]] += Tangent;
-			//	VertexTangents[Index[2]] += Tangent;
-			//}
+				// Accumulate tangents for each vertex in the triangle
+				VertexTangents[Index[0]] += Tangent;
+				VertexTangents[Index[1]] += Tangent;
+				VertexTangents[Index[2]] += Tangent;
+			}
 
-			//// Normalize and set normals and tangents
-			//for (int32 i = 0; i < totalSize; i++)
-			//{
-			//	VertexNormals[i].Normalize();
-			//	//UE_LOG(LogTemp, Warning, TEXT("Normal %d: %s"), i, *VertexNormals[i].ToString());
-			//	Builder.SetNormal(i, VertexNormals[i]);
+			// Normalize and set normals and tangents
+			for (int32 i = 0; i < totalSize; i++)
+			{
+				VertexNormals[i].Normalize();
+				//UE_LOG(LogTemp, Warning, TEXT("Normal %d: %s"), i, *VertexNormals[i].ToString());
+				Builder.SetNormal(i, VertexNormals[i]);
 
-			//	VertexTangents[i].Normalize();
-			//	Builder.SetTangent(i, VertexTangents[i]);
-			//}
+				VertexTangents[i].Normalize();
+				Builder.SetTangent(i, VertexTangents[i]);
+			}
 			
 			Component->SetIsActive(true);
 			if (!Component->GetIsInitialised()) {
@@ -647,7 +659,7 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 			int32 VertexCount = Builder.NumVertices();
 			//UE_LOG(LogTemp, Display, TEXT("SET VERTS: %i, SET LOD %i"), VertexCount, Component->GetLOD());
 			Component->SetOldLOD(Component->GetLOD());
-			Component->SetPrevBuilder(MoveTemp(BuilderPtr));
+			Component->SetPrevBuilder(BuilderPtr);
 			Component->SetPrevStreamset(MoveTemp(StreamSet));
 		});
 }
