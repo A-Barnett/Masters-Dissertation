@@ -121,14 +121,10 @@ public:
         OldLOD = InLOD;
     }
     bool TryLockMesh() {
-        return MeshMutex.try_lock(); // Non-blocking; returns false if already locked
+        return MeshMutex.try_lock();
     }
-
     void UnlockMesh() {
         MeshMutex.unlock();
-    }
-    std::mutex& GetMeshMutex() {
-        return MeshMutex;
     }
 
 };

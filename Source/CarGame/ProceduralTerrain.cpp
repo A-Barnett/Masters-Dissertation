@@ -221,10 +221,6 @@ void AProceduralTerrain::UpdateTerrain()
 	UE_LOG(LogTemp, Display, TEXT("Old Terrains no longer needed: %i"), terrainsToBeMoved.Num());
 	UE_LOG(LogTemp, Display, TEXT("New Terrains made: %i"), terrainPiecesMade);
 	UE_LOG(LogTemp, Display, TEXT("Total Terrains updated: %i"), ComponentsToUpdate.Num());
-	//for (int i = 0; i < ComponentsToUpdate.Num(); i++) {
-	//	GenerateTerrainSection(ComponentsToUpdate[i]);
-	//}
-	// Generate terrain in parallel
 	ParallelFor(ComponentsToUpdate.Num(), [this, ComponentsToUpdate](int32 Index)
 	{
 		GenerateTerrainSection(ComponentsToUpdate[Index]);
