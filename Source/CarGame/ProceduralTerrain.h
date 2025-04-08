@@ -20,8 +20,6 @@
 #include <mutex>
 
 
-
-
 #include "ProceduralTerrain.generated.h"
 
 class TerrainComponent {
@@ -129,35 +127,54 @@ public:
 
 };
 
-class MeshGenerationFactory
-{
+class PathComponent {
 private:
-    TQueue<TFunction<void()>> MeshGenerationQueue; // Queue of mesh creation tasks
-    FCriticalSection Mutex;                        // Mutex to ensure thread safety
+    UProceduralMeshComponent* MeshComponent;
+    FRealtimeMeshSectionGroupKey GroupKey;
+    FRealtimeMeshSectionKey Key;
+    TSharedPtr<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>> PathBuilder;
+    TSharedPtr<FRealtimeMeshStreamSet> PathStreamSet;
 
 public:
-    void EnqueueMeshTask(TFunction<void()> MeshTask)
-    {
-        FScopeLock Lock(&Mutex);
-        MeshGenerationQueue.Enqueue(MoveTemp(MeshTask));
+    PathComponent(UProceduralMeshComponent* InMeshComponent)
+        : MeshComponent(InMeshComponent) {
+    }
+    UProceduralMeshComponent* GetMeshComponent() const {
+        return MeshComponent;
+    }
+    void SetMeshComponent(UProceduralMeshComponent* InMeshComponent) {
+        MeshComponent = InMeshComponent;
+    }
+    const FRealtimeMeshSectionGroupKey GetGroupKey() {
+        return GroupKey;
+    }
+    void SetGroupKey(const FRealtimeMeshSectionGroupKey InGroupKey) {
+        GroupKey = InGroupKey;
     }
 
-    void ProcessMeshTasks()
-    {
-        TFunction<void()> MeshTask;
-        if (MeshGenerationQueue.Dequeue(MeshTask))
-        {
-            MeshTask(); // Execute one task per frame
-        }
+    const FRealtimeMeshSectionKey GetKey() {
+        return Key;
+    }
+    void SetKey(const FRealtimeMeshSectionKey InKey) {
+        Key = InKey;
     }
 
-    bool HasPendingTasks() const
-    {
-        return !MeshGenerationQueue.IsEmpty();
+    void SetPathBuilder(TSharedPtr<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>>&& InBuilder) {
+        PathBuilder = MoveTemp(InBuilder);
     }
+
+    TSharedPtr<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>> GetPathBuilder() {
+        return PathBuilder;
+    }
+
+    void SetPathStreamset(TSharedPtr<FRealtimeMeshStreamSet> StreamSetIn) {
+        PathStreamSet = MoveTemp(StreamSetIn);
+    }
+    TSharedPtr<FRealtimeMeshStreamSet> GetPathStreamSet() {
+        return PathStreamSet;
+    }
+
 };
-
-
 
 
 USTRUCT(BlueprintType)
@@ -193,8 +210,8 @@ protected:
 public:
     virtual void Tick(float DeltaTime) override;
    
-    void SmoothPathPointsHeight(float smoothLevel);
-    void UpdateTerrain();
+    void SmoothPathPointsHeight(float smoothLevel, int32 offset);
+    void UpdateTerrain(bool initial = false);
     TerrainComponent* FindTerrainComponent(const FVector2D& GridPosition);
     TerrainComponent* CreateTerrainComponent(const FVector2D& GridPosition, int LOD);
     void RemoveTerrainComponent(TerrainComponent* terrain);
@@ -203,8 +220,6 @@ public:
     URealtimeMeshSimple* RealtimeMesh;
     int totalCreated = 0;
 
-
-    MeshGenerationFactory TerrainMeshFactory;
     TPair<float, float> randomOffset;
     FVector2D PlayerGridPos = FVector2D(0,0);
     APawn* PlayerPawn;
@@ -321,23 +336,29 @@ public:
         UE_LOG(LogTemp, Log, TEXT("All terrain procedural meshes removed."));
     }
 
-    TArray<FVector> PathPoints;
-    TArray<FVector> PathVertices;
-    TArray<int32> PathTriangles;
-    TArray<FVector> PathNormals;
-    TArray<FVector2D> PathUVs;
-    TMap<FIntPoint, TArray<FVector>> PathGridMap;
-    TMap<FIntPoint, TArray<FVector>> PathVertMap;
+    TArray<FVector3f> PathPoints;
+
+    TMap<FIntPoint, TArray<FVector3f>> PathGridMap;
+    TMap<FIntPoint, TArray<FVector3f>> PathVertMap;
     void GenerateTerrain();
 
 private:
-    float CalculateHeight(int32 X, int32 Y, TArray<FVector>* PointsMap, TArray<FVector>* VertMap) const;
-    float CalculateHeightOnPath(int32 X, int32 Y, TArray<FVector>* PointsMap) const;
+    FVector2D CurrentPosition;
+    FVector2D CurrentDirection;
+    float CurrentTurnAngle;
+    FRandomStream RandomStream;
+    TArray<FVector3f> LastVertexes;
+    int32 pointCount = 0;
+    UProceduralMeshComponent* CurrentMeshComponent;
+    PathComponent* Path;
+    int32 pointsGenerated = 0;
+    int32 makePerUpdate = 40;
+    float CalculateHeight(int32 X, int32 Y, TArray<FVector3f>* PointsMap, TArray<FVector3f>* VertMap) const;
+    float CalculateHeightOnPath(int32 X, int32 Y, TArray<FVector3f>* VertMap) const;
     float CalculateNoiseAtPoint(int32 X, int32 Y) const;
-    void GeneratePath();
-    bool IsOnPath(int32 X, int32 Y, bool useOffset, TArray<FVector>* PointsMap) const;
-    float DistFromPath(int32 X, int32 Y, bool useOffset, TArray<FVector>* PointsMap) const;
+    void GeneratePath(bool start, int32 offset);
+    bool IsOnPath(int32 X, int32 Y, bool useOffset, TArray<FVector3f>* PointsMap) const;
+    float DistFromPath(int32 X, int32 Y, bool useOffset, TArray<FVector3f>* PointsMap) const;
     void GenerateTerrainSection(TerrainComponent* component);
-    void GeneratePathMesh();
-    void DisplayPathMesh();
+    void GeneratePathMesh(int32 offset);
 };
