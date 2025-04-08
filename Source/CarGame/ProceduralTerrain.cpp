@@ -263,17 +263,14 @@ float AProceduralTerrain::CalculateNoiseAtPoint(int32 X, int32 Y) const {
 }
 
 
-float AProceduralTerrain::CalculateHeightOnPath(int32 X, int32 Y) const
+float AProceduralTerrain::CalculateHeightOnPath(int32 X, int32 Y, TArray<FVector>* VertMap) const
 {
 
 	float closestDist = INFINITY;
 	FVector closestPoint;
-	int MaxSearchRadius = 1000;
-	FIntPoint Cell(FMath::FloorToInt(X * Scale / GridSize), FMath::FloorToInt(Y * Scale / GridSize));
 	FVector p = FVector(X * Scale, Y * Scale, 0);
-	int32 SearchRadius = 1; // Start with a small radius
 	bool PointFound = false;
-	for (FVector point : PathVertices) {
+	for (FVector point : *VertMap) {
 		if (FVector::DistXY(p, point) < closestDist) {
 			closestDist = FVector::Dist2D(p, point);
 			closestPoint = point;
@@ -283,32 +280,33 @@ float AProceduralTerrain::CalculateHeightOnPath(int32 X, int32 Y) const
 }
 
 
-float AProceduralTerrain::CalculateHeight(int32 X, int32 Y) const
+float AProceduralTerrain::CalculateHeight(int32 X, int32 Y, TArray<FVector>* PointsMap, TArray<FVector>* VertMap) const
 {
 	float pointHeight = CalculateNoiseAtPoint(X, Y);
-	if (IsOnPath(X, Y, true))
+	if (PointsMap == nullptr) return pointHeight;
+	if (IsOnPath(X, Y, true, PointsMap))
 	{
-		return CalculateHeightOnPath(X, Y);
+		return CalculateHeightOnPath(X, Y, VertMap);
 	}
-	else if (IsOnPath(X, Y, false)) {
+	else if (IsOnPath(X, Y, false, PointsMap)) {
 		//return AverageHeightNeighbours(X, Y, SmoothingSize);
-		float pathHeight = CalculateHeightOnPath(X, Y);
-		float lerpAmount = (DistFromPath(X, Y, false) / (SmoothingThicknessOffset - ThicknessOffset));
+		float pathHeight = CalculateHeightOnPath(X, Y, VertMap);
+		float lerpAmount = (DistFromPath(X, Y, false, PointsMap) / (SmoothingThicknessOffset - ThicknessOffset));
 		return FMath::Lerp(pathHeight, pointHeight, lerpAmount);
 	}
 	return pointHeight;
 }
 
 
-bool AProceduralTerrain::IsOnPath(int32 X, int32 Y, bool useOffset) const
+bool AProceduralTerrain::IsOnPath(int32 X, int32 Y, bool useOffset, TArray<FVector>* PointsMap) const
 {
 	FVector2D Point2D(X * Scale, Y * Scale);
 	FVector Point(Point2D.X, Point2D.Y, 0.0f);
-	for (int32 i = 0; i < PathPoints.Num(); ++i)
+	for (int32 i = 0; i < PointsMap->Num()-1; ++i)
 	{
 		// Get current and next point, converting to FVector
-		FVector2D CurrentPoint2D = FVector2D(PathPoints[i].X, PathPoints[i].Y);
-		FVector2D NextPoint2D = FVector2D(PathPoints[(i + 1) % PathPoints.Num()].X, PathPoints[(i + 1) % PathPoints.Num()].Y);
+		FVector2D CurrentPoint2D = FVector2D((*PointsMap)[i].X, (*PointsMap)[i].Y);
+		FVector2D NextPoint2D = FVector2D((*PointsMap)[(i + 1) ].X, (*PointsMap)[(i + 1) ].Y);
 
 		FVector CurrentPoint(CurrentPoint2D.X, CurrentPoint2D.Y, 0.0f);
 		FVector NextPoint(NextPoint2D.X, NextPoint2D.Y, 0.0f);
@@ -325,16 +323,16 @@ bool AProceduralTerrain::IsOnPath(int32 X, int32 Y, bool useOffset) const
 }
 
 
-float AProceduralTerrain::DistFromPath(int32 X, int32 Y, bool useOffset) const
+float AProceduralTerrain::DistFromPath(int32 X, int32 Y, bool useOffset, TArray<FVector>* PointsMap) const
 {
 	FVector2D Point2D(X * Scale, Y * Scale);
 	FVector Point(Point2D.X, Point2D.Y, 0.0f);
 	float FinalDistance = INFINITY;
-	for (int32 i = 0; i < PathPoints.Num(); ++i)
+	for (int32 i = 0; i < PointsMap->Num()-1; ++i)
 	{
 		// Get current and next point, converting to FVector
-		FVector2D CurrentPoint2D = FVector2D(PathPoints[i].X, PathPoints[i].Y);
-		FVector2D NextPoint2D = FVector2D(PathPoints[(i + 1) % PathPoints.Num()].X, PathPoints[(i + 1) % PathPoints.Num()].Y);
+		FVector2D CurrentPoint2D = FVector2D((*PointsMap)[i].X, (*PointsMap)[i].Y);
+		FVector2D NextPoint2D = FVector2D((*PointsMap)[(i + 1)].X, (*PointsMap)[(i + 1)].Y);
 
 		FVector CurrentPoint(CurrentPoint2D.X, CurrentPoint2D.Y, 0.0f);
 		FVector NextPoint(NextPoint2D.X, NextPoint2D.Y, 0.0f);
@@ -372,7 +370,7 @@ void AProceduralTerrain::GeneratePath()
 	// PathPoints.Empty();
 	FRandomStream RandomStream(PathSeed);
 
-	FVector2D CurrentPosition(-Width * Scale * 10.0f, Height * Scale * 0.5f); // Start position
+	FVector2D CurrentPosition(-Width * Scale * 10.0f, Width * Scale * 1.0f); // Start position
 	FVector2D CurrentDirection(1.0f, 0.0f); // Initial direction (X-axis)
 	float StepSize = Scale * 5.0f; // Step distance per point
 
@@ -420,6 +418,12 @@ void AProceduralTerrain::GeneratePath()
 		FVector FinalPoint = FVector(SmoothedPoint.X, SmoothedPoint.Y, CalculateNoiseAtPoint(SmoothedPoint.X / Scale, SmoothedPoint.Y / Scale));
 		if (NumPoints == 800) {
 			PathPoints.Add(FinalPoint);
+			int32 GridX = FMath::FloorToInt(FinalPoint.X / currentGridSize);
+			int32 GridY = FMath::FloorToInt(FinalPoint.Y / currentGridSize);
+			UE_LOG(LogTemp, Display, TEXT("Point at Grid (%i,%i)"), GridX, GridY);
+			FIntPoint Cell = FIntPoint(GridX, GridY);
+			PathGridMap.FindOrAdd(Cell).Add(FinalPoint);
+			
 		}
 
 	}
@@ -472,6 +476,24 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 			int32 vertsPerRow = (SectionSize / LOD) + 1;
 			int32 totalSize = vertsPerRow * vertsPerRow;
 
+			FIntPoint QueryCell = FIntPoint(Component->GetGridPosition().X,Component->GetGridPosition().Y);
+			TArray<FVector>* PointsMap = new TArray<FVector>();
+			TArray<FVector>* VertsMap = new TArray<FVector>();
+			for (int32 dx = -2; dx <= 2; ++dx)
+			{
+				for (int32 dy = -2; dy <= 2; ++dy)
+				{
+					FIntPoint NeighborCell = FIntPoint(QueryCell.X + dx, QueryCell.Y + dy);
+					if (TArray<FVector>* NeighborPoints = PathGridMap.Find(NeighborCell))
+					{
+						PointsMap->Append(*NeighborPoints);
+					}
+					if (TArray<FVector>* NeighborVerts = PathVertMap.Find(NeighborCell))
+					{
+						VertsMap->Append(*NeighborVerts);
+					}
+				}
+			}
 
 			// Generate vertices and UVs
 			int vertsAmount = 0;
@@ -491,7 +513,7 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 								) * UVScale);
 							}
 							else {
-								float Z = CalculateHeight(x, y);
+								float Z = CalculateHeight(x, y, PointsMap, VertsMap);
 								Builder.AddVertex(FVector3f(x * Scale, y * Scale, Z))
 									.SetTexCoord(FVector2f(
 										static_cast<float>(x/ SectionSize),
@@ -527,7 +549,7 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 									pointsOutsideRange++;
 								}
 								// Generate new vertex if out of bounds or misaligned
-								float Z = CalculateHeight(x, y);
+								float Z = CalculateHeight(x, y, PointsMap, VertsMap);
 								Builder.AddVertex(FVector3f(x * Scale, y * Scale, Z))
 									.SetTexCoord(FVector2f(
 										static_cast<float>(x - StartX) / SectionSize,
@@ -550,7 +572,7 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 				{
 					for (int32 x = StartX; x <= EndX; x += LOD)
 					{
-						float Z = CalculateHeight(x, y);
+						float Z = CalculateHeight(x, y, PointsMap, VertsMap);
 						Builder.AddVertex(FVector3f(x * Scale, y * Scale, Z))
 							.SetTexCoord(FVector2f(
 								static_cast<float>(x - StartX) / SectionSize,
@@ -787,6 +809,21 @@ void AProceduralTerrain::DisplayPathMesh() {
 		PathVertices[i + (((ThicknessDetail * 2) + 1) * 2) - 1].Z += EdgeHeightOffset;
 
 		i += ((ThicknessDetail * 2) + 1) * 2;
+	}
+	int VertsPerPoint = ((ThicknessDetail * 2) + 1) * 2;
+	int pointCount = 0;
+	int vertsInPoint = 0;
+	for (FVector vert : PathVertices) {
+		int32 GridX = FMath::FloorToInt(PathPoints[pointCount].X / currentGridSize);
+		int32 GridY = FMath::FloorToInt(PathPoints[pointCount].Y / currentGridSize);
+		//UE_LOG(LogTemp, Display, TEXT("Point at Grid (%i,%i)"), GridX, GridY);
+		FIntPoint Cell = FIntPoint(GridX, GridY);
+		PathVertMap.FindOrAdd(Cell).Add(vert);
+		vertsInPoint++;
+		if (vertsInPoint >= VertsPerPoint) {
+			pointCount++;
+			vertsInPoint = 0;
+		}
 	}
 
 
