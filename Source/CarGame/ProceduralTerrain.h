@@ -227,9 +227,6 @@ public:
     int32 Width;
 
     UPROPERTY(EditAnywhere, Category = "Terrain")
-    int32 Height = 100;
-
-    UPROPERTY(EditAnywhere, Category = "Terrain")
     float Scale;
 
     UPROPERTY(EditAnywhere, Category = "Terrain")
@@ -329,15 +326,17 @@ public:
     TArray<int32> PathTriangles;
     TArray<FVector> PathNormals;
     TArray<FVector2D> PathUVs;
+    TMap<FIntPoint, TArray<FVector>> PathGridMap;
+    TMap<FIntPoint, TArray<FVector>> PathVertMap;
     void GenerateTerrain();
 
 private:
-    float CalculateHeight(int32 X, int32 Y) const;
-    float CalculateHeightOnPath(int32 X, int32 Y) const;
+    float CalculateHeight(int32 X, int32 Y, TArray<FVector>* PointsMap, TArray<FVector>* VertMap) const;
+    float CalculateHeightOnPath(int32 X, int32 Y, TArray<FVector>* PointsMap) const;
     float CalculateNoiseAtPoint(int32 X, int32 Y) const;
     void GeneratePath();
-    bool IsOnPath(int32 X, int32 Y, bool useOffset) const;
-    float DistFromPath(int32 X, int32 Y, bool useOffset) const;
+    bool IsOnPath(int32 X, int32 Y, bool useOffset, TArray<FVector>* PointsMap) const;
+    float DistFromPath(int32 X, int32 Y, bool useOffset, TArray<FVector>* PointsMap) const;
     void GenerateTerrainSection(TerrainComponent* component);
     void GeneratePathMesh();
     void DisplayPathMesh();
