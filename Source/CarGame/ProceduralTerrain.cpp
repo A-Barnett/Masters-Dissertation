@@ -384,7 +384,7 @@ void AProceduralTerrain::GeneratePath(bool start, int32 offset)
 	TArray<FVector2D> BasePoints;
 	float StepSize = Scale * 5.0f; // Step distance per point
 	float MaxTurnAngle = 2.5f;
-	int32 pointsToMake = makePerUpdate;
+	int32 pointsToMake = makePerUpdate+1;
 
 	if (start) {
 		RandomStream = FRandomStream(PathSeed);
@@ -443,6 +443,8 @@ void AProceduralTerrain::GeneratePath(bool start, int32 offset)
 
 void AProceduralTerrain::SmoothPathPointsHeight(float smoothLevel, int32 offset)
 {
+	if (offset != 0) offset--;
+	UE_LOG(LogTemp, Display, TEXT("Offset %i, Points %i"),offset,PathPoints.Num());
 	for (int32 i = 1+ offset; i < (PathPoints.Num()); ++i)
 	{
 		FVector3f& CurrentPoint = PathPoints[i];
@@ -714,8 +716,9 @@ void AProceduralTerrain::GeneratePathMesh(int32 offset)
 	Builder.EnableTexCoords();
 	Builder.EnablePolyGroups();
 
-	for (int32 i = offset; i < (PathPoints.Num() - 1); ++i)
+	for (int32 i = offset; i < (PathPoints.Num() - 2); ++i)
 	{
+
 		FVector3f StartPoint = PathPoints[i];
 		FVector3f EndPoint = PathPoints[(i + 1)];
 		float StartHeightCenter = StartPoint.Z;
@@ -799,8 +802,10 @@ void AProceduralTerrain::GeneratePathMesh(int32 offset)
 		}
 
 	}
-
-	for (int i = (offset * (((ThicknessDetail * 2) + 1)) * 2); i < Builder.NumVertices(); i) {
+	if (offset != 0) {
+		offset -= 2;
+	}
+	for (int i = prevEnd; i < Builder.NumVertices(); i) {
 		FVector3f getPos = Builder.GetPosition(i);
 		getPos.Z += EdgeHeightOffset;
 		Builder.SetPosition(i, getPos);
@@ -820,7 +825,7 @@ void AProceduralTerrain::GeneratePathMesh(int32 offset)
 	int VertsPerPoint = ((ThicknessDetail * 2) + 1) * 2;
 	int vertsInPoint = 0;
 	UE_LOG(LogTemp, Display, TEXT("Points %i, Verts %i"),PathPoints.Num(), Builder.NumVertices());
-	for (int i = (offset* (((ThicknessDetail * 2) + 1)) * 2); i < Builder.NumVertices() - ((((ThicknessDetail * 2) + 1) * 2) - 2); i++) {
+	for (int i = prevEnd; i < Builder.NumVertices(); i++) {
 		int32 GridX = FMath::FloorToInt(PathPoints[pointCount].X / currentGridSize);
 		int32 GridY = FMath::FloorToInt(PathPoints[pointCount].Y / currentGridSize);
 		//UE_LOG(LogTemp, Display, TEXT("Point at Grid (%i,%i)"), GridX, GridY);
@@ -832,6 +837,8 @@ void AProceduralTerrain::GeneratePathMesh(int32 offset)
 			vertsInPoint = 0;
 		}
 	}
+	pointCount++;
+	prevEnd = Builder.NumVertices();
 
 
 	if (offset == 0) {

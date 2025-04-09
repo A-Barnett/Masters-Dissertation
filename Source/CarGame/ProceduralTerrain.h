@@ -353,6 +353,7 @@ private:
     PathComponent* Path;
     int32 pointsGenerated = 0;
     int32 makePerUpdate = 40;
+    int32 prevEnd = 0;
     float CalculateHeight(int32 X, int32 Y, TArray<FVector3f>* PointsMap, TArray<FVector3f>* VertMap) const;
     float CalculateHeightOnPath(int32 X, int32 Y, TArray<FVector3f>* VertMap) const;
     float CalculateNoiseAtPoint(int32 X, int32 Y) const;
