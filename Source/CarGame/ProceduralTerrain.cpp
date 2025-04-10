@@ -37,7 +37,7 @@ void AProceduralTerrain::BeginPlay()
 	MeshComponent.Empty();
 	TerrainComponents.Empty();
 	PlayerPawn = GetWorld()->GetFirstPlayerController()->GetPawn();
-	currentGridSize = Width * Scale;
+	currentGridSize = (Width+1) * Scale;
 	PlayerGridPos = FVector2D(0, 0);
 	RealtimeMesh = GetRealtimeMeshComponent()->InitializeRealtimeMesh<URealtimeMeshSimple>();
 	RealtimeMesh->SetupMaterialSlot(0, "GrassMat", TerrainMaterial);
@@ -388,7 +388,7 @@ void AProceduralTerrain::GeneratePath(bool start, int32 offset)
 
 	if (start) {
 		RandomStream = FRandomStream(PathSeed);
-		CurrentPosition = FVector2D(-Width * Scale * 10.0f, Width * Scale * 1.0f); // Start position
+		CurrentPosition = FVector2D(-Width * Scale * 20.0f, 0.0f); // Start position
 		CurrentDirection = FVector2D(1.0f, 0.0f); // Initial direction (X-axis)
 		CurrentTurnAngle = 0.0f;
 		BasePoints.Add(CurrentPosition);
@@ -802,9 +802,8 @@ void AProceduralTerrain::GeneratePathMesh(int32 offset)
 		}
 
 	}
-	if (offset != 0) {
-		offset -= 2;
-	}
+
+
 	for (int i = prevEnd; i < Builder.NumVertices(); i) {
 		FVector3f getPos = Builder.GetPosition(i);
 		getPos.Z += EdgeHeightOffset;
@@ -822,9 +821,9 @@ void AProceduralTerrain::GeneratePathMesh(int32 offset)
 		i += ((ThicknessDetail * 2) + 1) * 2;
 	}
 
-	int VertsPerPoint = ((ThicknessDetail * 2) + 1) * 2;
-	int vertsInPoint = 0;
-	UE_LOG(LogTemp, Display, TEXT("Points %i, Verts %i"),PathPoints.Num(), Builder.NumVertices());
+	int VertsPerPoint = (((ThicknessDetail * 2) + 1) * 2);
+	
+
 	for (int i = prevEnd; i < Builder.NumVertices(); i++) {
 		int32 GridX = FMath::FloorToInt(PathPoints[pointCount].X / currentGridSize);
 		int32 GridY = FMath::FloorToInt(PathPoints[pointCount].Y / currentGridSize);
@@ -837,7 +836,9 @@ void AProceduralTerrain::GeneratePathMesh(int32 offset)
 			vertsInPoint = 0;
 		}
 	}
-	pointCount++;
+	pointCount+=2;
+	UE_LOG(LogTemp, Display, TEXT("Points %i, Verts %i, Count %i"), PathPoints.Num(), Builder.NumVertices(), pointCount);
+	//pointCount++;
 	prevEnd = Builder.NumVertices();
 
 
