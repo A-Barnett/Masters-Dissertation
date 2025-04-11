@@ -34,29 +34,33 @@ void AProceduralTerrain::BeginPlay()
 	Super::BeginPlay();
 	randomOffset.Value = rand() % 100000;
 	randomOffset.Key = rand() % 100000;
-	MeshComponent.Empty();
 	TerrainComponents.Empty();
+	PathComponents.Empty();
 	PlayerPawn = GetWorld()->GetFirstPlayerController()->GetPawn();
-	currentGridSize = (Width+1) * Scale;
+	currentGridSize = (Width + 1) * Scale;
 	PlayerGridPos = FVector2D(0, 0);
-	RealtimeMesh = GetRealtimeMeshComponent()->InitializeRealtimeMesh<URealtimeMeshSimple>();
+	// Create and attach components if not already set
+	TerrainMeshComponent = NewObject<URealtimeMeshComponent>(this, TEXT("TerrainMeshComponent"));
+	TerrainMeshComponent->SetupAttachment(RootComponent);
+	TerrainMeshComponent->RegisterComponent();
+
+	PathMeshComponent = NewObject<URealtimeMeshComponent>(this, TEXT("PathMeshComponent"));
+	PathMeshComponent->SetupAttachment(RootComponent);
+	PathMeshComponent->RegisterComponent();
+
+	RealtimeMesh = TerrainMeshComponent->InitializeRealtimeMesh<URealtimeMeshSimple>();
+	PathRealtimeMesh = PathMeshComponent->InitializeRealtimeMesh<URealtimeMeshSimple>();
 	RealtimeMesh->SetupMaterialSlot(0, "GrassMat", TerrainMaterial);
-	RealtimeMesh->SetupMaterialSlot(1, "PathMat", PathMaterial);
+	PathRealtimeMesh->SetupMaterialSlot(0, "PathMat", PathMaterial);
 	FRealtimeMeshCollisionConfiguration CollisionConfig;
-	CollisionConfig.bUseAsyncCook = true;  // Allows async cooking for better performance
+	CollisionConfig.bUseAsyncCook = true;
 	CollisionConfig.bUseComplexAsSimpleCollision = true;
 	CollisionConfig.bShouldFastCookMeshes = true;
-	RealtimeMeshComponent->SetMobility(EComponentMobility::Static);
-	RealtimeMeshComponent->SetCastShadow(false);
-	RealtimeMeshComponent->SetGenerateOverlapEvents(false);
-	RealtimeMeshComponent->SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
-	RealtimeMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-	SetRootComponent(RealtimeMeshComponent);
-	RealtimeMesh->SetCollisionConfig(CollisionConfig);
 
+	RealtimeMesh->SetCollisionConfig(CollisionConfig);
+	PathRealtimeMesh->SetCollisionConfig(CollisionConfig);
 
 	GenerateTerrain();
-
 }
 
 
@@ -64,10 +68,16 @@ void AProceduralTerrain::BeginPlay()
 void AProceduralTerrain::GenerateTerrain()
 {
 	FDateTime StartTime = FDateTime::Now();
-	GeneratePath(true,0);
-	SmoothPathPointsHeight(PathHeightSmooth,0);
-	GeneratePathMesh(0);
-	pointsGenerated += NumPoints;
+	for (int i = 0; i < 14; i++) {
+		GeneratePath(i == 0, pointsGenerated);
+		SmoothPathPointsHeight(PathHeightSmooth, pointsGenerated);
+		PathComponent* pathComponent = new PathComponent(pathComponentsCount);
+		PathComponents.Add(pathComponent);
+		pathComponentsCount++;
+		GeneratePathMesh(pointsGenerated, pathComponent);
+		pointsGenerated += makePerUpdate;
+		pathUpdateCount = 0;
+	}
 	UpdateTerrain(true);
 
 	FDateTime EndTime = FDateTime::Now();
@@ -138,13 +148,19 @@ void AProceduralTerrain::ResetPlayerPhysics()
 
 void AProceduralTerrain::UpdateTerrain(bool initial)
 {
-	if (!initial) {
+	if (!initial && pathUpdateCount >= 5) {
 		GeneratePath(false, pointsGenerated);
 		SmoothPathPointsHeight(PathHeightSmooth, pointsGenerated);
-		GeneratePathMesh(pointsGenerated);
-
+		PathComponent* pathComponent = new PathComponent(pathComponentsCount);
+		PathComponents.Add(pathComponent);
+		pathComponentsCount++;
+		GeneratePathMesh(pointsGenerated, pathComponent);
+		RemovePathMesh(PathComponents[0]);
 		pointsGenerated += makePerUpdate;
+		pathUpdateCount = 0;
+
 	}
+	pathUpdateCount++;
 	UE_LOG(LogTemp, Display, TEXT("POINTS %i"), PathPoints.Num());
 	TArray<TerrainComponent*> terrainsToBeMoved;
 	TArray<TerrainComponent*> ComponentsToUpdate;
@@ -234,9 +250,9 @@ void AProceduralTerrain::UpdateTerrain(bool initial)
 	UE_LOG(LogTemp, Display, TEXT("New Terrains made: %i"), terrainPiecesMade);
 	UE_LOG(LogTemp, Display, TEXT("Total Terrains updated: %i"), ComponentsToUpdate.Num());
 	ParallelFor(ComponentsToUpdate.Num(), [this, ComponentsToUpdate](int32 Index)
-	{
-		GenerateTerrainSection(ComponentsToUpdate[Index]);
-	});
+		{
+			GenerateTerrainSection(ComponentsToUpdate[Index]);
+		});
 }
 
 
@@ -255,7 +271,7 @@ TerrainComponent* AProceduralTerrain::CreateTerrainComponent(const FVector2D& Gr
 {
 	totalCreated++;
 	FString ComponentName = FString::Printf(TEXT("MeshComponent%d"), TerrainComponents.Num());
-	TerrainComponent* NewComponent = new TerrainComponent(nullptr, GridPosition, LOD, TerrainComponents.Num()); //nullptr
+	TerrainComponent* NewComponent = new TerrainComponent(GridPosition, LOD, TerrainComponents.Num()); //nullptr
 	NewComponent->SetIsActive(true);
 	TerrainComponents.Add(NewComponent);
 	return NewComponent;
@@ -277,19 +293,59 @@ float AProceduralTerrain::CalculateNoiseAtPoint(int32 X, int32 Y) const {
 
 float AProceduralTerrain::CalculateHeightOnPath(int32 X, int32 Y, TArray<FVector3f>* VertMap) const
 {
-
-	float closestDist = INFINITY;
-	FVector3f closestPoint;
 	FVector3f p = FVector3f(X * Scale, Y * Scale, 0);
-	bool PointFound = false;
-	for (FVector3f point : *VertMap) {
-		if (FVector3f::DistXY(p, point) < closestDist) {
-			closestDist = FVector3f::Dist2D(p, point);
-			closestPoint = point;
+
+	// Array to hold the 3 closest points and their distances
+	TArray<TPair<float, FVector3f>> ClosestPoints;
+	ClosestPoints.Reserve(3);
+
+	for (const FVector3f& point : *VertMap)
+	{
+		float dist = FVector3f::DistXY(p, point);
+
+		// Insert if we have fewer than 3
+		if (ClosestPoints.Num() < 3)
+		{
+			ClosestPoints.Add(TPair<float, FVector3f>(dist, point));
+		}
+		else
+		{
+			// Find the farthest in the 3
+			int32 FarthestIndex = 0;
+			float FarthestDist = ClosestPoints[0].Key;
+			for (int32 i = 1; i < 3; ++i)
+			{
+				if (ClosestPoints[i].Key > FarthestDist)
+				{
+					FarthestDist = ClosestPoints[i].Key;
+					FarthestIndex = i;
+				}
+			}
+
+			// Replace if this one is closer
+			if (dist < FarthestDist)
+			{
+				ClosestPoints[FarthestIndex] = TPair<float, FVector3f>(dist, point);
+			}
 		}
 	}
-	return closestPoint.Z - (HeightAdjust * 2);
+
+	// Average Z of the 3 closest points
+	if (ClosestPoints.Num() > 0)
+	{
+		float avgZ = 0.0f;
+		for (const TPair<float, FVector3f>& pair : ClosestPoints)
+		{
+			avgZ += pair.Value.Z;
+		}
+		avgZ /= ClosestPoints.Num();
+		return avgZ - (HeightAdjust * 2.0f);
+	}
+
+	// Fallback if no points
+	return 0.0f;
 }
+
 
 
 float AProceduralTerrain::CalculateHeight(int32 X, int32 Y, TArray<FVector3f>* PointsMap, TArray<FVector3f>* VertMap) const
@@ -314,11 +370,11 @@ bool AProceduralTerrain::IsOnPath(int32 X, int32 Y, bool useOffset, TArray<FVect
 {
 	FVector2D Point2D(X * Scale, Y * Scale);
 	FVector Point(Point2D.X, Point2D.Y, 0.0f);
-	for (int32 i = 0; i < PointsMap->Num()-1; ++i)
+	for (int32 i = 0; i < PointsMap->Num() - 1; ++i)
 	{
 		// Get current and next point, converting to FVector
 		FVector2D CurrentPoint2D = FVector2D((*PointsMap)[i].X, (*PointsMap)[i].Y);
-		FVector2D NextPoint2D = FVector2D((*PointsMap)[(i + 1) ].X, (*PointsMap)[(i + 1) ].Y);
+		FVector2D NextPoint2D = FVector2D((*PointsMap)[(i + 1)].X, (*PointsMap)[(i + 1)].Y);
 
 		FVector CurrentPoint(CurrentPoint2D.X, CurrentPoint2D.Y, 0.0f);
 		FVector NextPoint(NextPoint2D.X, NextPoint2D.Y, 0.0f);
@@ -340,7 +396,7 @@ float AProceduralTerrain::DistFromPath(int32 X, int32 Y, bool useOffset, TArray<
 	FVector2D Point2D(X * Scale, Y * Scale);
 	FVector Point(Point2D.X, Point2D.Y, 0.0f);
 	float FinalDistance = INFINITY;
-	for (int32 i = 0; i < PointsMap->Num()-1; ++i)
+	for (int32 i = 0; i < PointsMap->Num() - 1; ++i)
 	{
 		// Get current and next point, converting to FVector
 		FVector2D CurrentPoint2D = FVector2D((*PointsMap)[i].X, (*PointsMap)[i].Y);
@@ -384,18 +440,18 @@ void AProceduralTerrain::GeneratePath(bool start, int32 offset)
 	TArray<FVector2D> BasePoints;
 	float StepSize = Scale * 5.0f; // Step distance per point
 	float MaxTurnAngle = 2.5f;
-	int32 pointsToMake = makePerUpdate+1;
+	int32 pointsToMake = makePerUpdate + 1;
 
 	if (start) {
 		RandomStream = FRandomStream(PathSeed);
-		CurrentPosition = FVector2D(-Width * Scale * 20.0f, 0.0f); // Start position
+		CurrentPosition = FVector2D(-Width * Scale * 24.0f, 0.0f); // Start position
 		CurrentDirection = FVector2D(1.0f, 0.0f); // Initial direction (X-axis)
 		CurrentTurnAngle = 0.0f;
 		BasePoints.Add(CurrentPosition);
-		pointsToMake = NumPoints;
+		pointsToMake = makePerUpdate;
 	}
 
-	for (int32 i = offset+1; i < pointsToMake+ offset; ++i)
+	for (int32 i = offset + 1; i < pointsToMake + offset; ++i)
 	{
 		if (i % TurnSize == 0)
 		{
@@ -429,14 +485,14 @@ void AProceduralTerrain::GeneratePath(bool start, int32 offset)
 		float T = 1.0f;
 		FVector2D SmoothedPoint = CatmullRomInterpolate(P0, P1, P2, P3, T);
 		FVector3f FinalPoint = FVector3f(SmoothedPoint.X, SmoothedPoint.Y, CalculateNoiseAtPoint(SmoothedPoint.X / Scale, SmoothedPoint.Y / Scale));
-		
+
 		PathPoints.Add(FinalPoint);
 		int32 GridX = FMath::FloorToInt(FinalPoint.X / currentGridSize);
 		int32 GridY = FMath::FloorToInt(FinalPoint.Y / currentGridSize);
 		UE_LOG(LogTemp, Display, TEXT("Point at Grid (%i,%i)"), GridX, GridY);
 		FIntPoint Cell = FIntPoint(GridX, GridY);
 		PathGridMap.FindOrAdd(Cell).Add(FinalPoint);
-			
+
 	}
 }
 
@@ -444,8 +500,8 @@ void AProceduralTerrain::GeneratePath(bool start, int32 offset)
 void AProceduralTerrain::SmoothPathPointsHeight(float smoothLevel, int32 offset)
 {
 	if (offset != 0) offset--;
-	UE_LOG(LogTemp, Display, TEXT("Offset %i, Points %i"),offset,PathPoints.Num());
-	for (int32 i = 1+ offset; i < (PathPoints.Num()); ++i)
+	UE_LOG(LogTemp, Display, TEXT("Offset %i, Points %i"), offset, PathPoints.Num());
+	for (int32 i = 1 + offset; i < (PathPoints.Num()); ++i)
 	{
 		FVector3f& CurrentPoint = PathPoints[i];
 		FVector3f& PrevPoint = PathPoints[i - 1];
@@ -467,7 +523,7 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 			TSharedPtr<FRealtimeMeshStreamSet> StreamSet = MakeShared<FRealtimeMeshStreamSet>();
 			auto BuilderPtr = MakeShared<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>>(*StreamSet);
 			auto& Builder = *BuilderPtr;;
-		
+
 			// here we go ahead and enable all the basic mesh data parts
 			Builder.EnableTangents();
 			Builder.EnableTexCoords();
@@ -485,7 +541,7 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 			int32 vertsPerRow = (SectionSize / LOD) + 1;
 			int32 totalSize = vertsPerRow * vertsPerRow;
 
-			FIntPoint QueryCell = FIntPoint(Component->GetGridPosition().X,Component->GetGridPosition().Y);
+			FIntPoint QueryCell = FIntPoint(Component->GetGridPosition().X, Component->GetGridPosition().Y);
 			TArray<FVector3f>* PointsMap = new TArray<FVector3f>();
 			TArray<FVector3f>* VertsMap = new TArray<FVector3f>();
 			for (int32 dx = -2; dx <= 2; ++dx)
@@ -525,8 +581,8 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 								float Z = CalculateHeight(x, y, PointsMap, VertsMap);
 								Builder.AddVertex(FVector3f(x * Scale, y * Scale, Z))
 									.SetTexCoord(FVector2f(
-										static_cast<float>(x/ SectionSize),
-										static_cast<float>(y  / SectionSize)
+										static_cast<float>(x / SectionSize),
+										static_cast<float>(y / SectionSize)
 									) * UVScale);
 								pointsOutsideRange++;
 							}
@@ -537,12 +593,12 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 						UE_LOG(LogTemp, Display, TEXT("OLD LOD %i, NEW LOD %i ,Points Failed %i ,Total Points %i, Sample Factor %i"), Component->GetOldLOD(), Component->GetLOD(), pointsOutsideRange, vertsAmount, SamplingFactor);
 					}
 				}
-				else if(Component->GetOldLOD() > Component->GetLOD()) {
+				else if (Component->GetOldLOD() > Component->GetLOD()) {
 					int32 SamplingFactor = OldLOD / LOD; // Upsample ratio
 					int32 OldvertsPerRow = (SectionSize / OldLOD) + 1;
 					int32 OldtotalSize = OldvertsPerRow * OldvertsPerRow; // Total size of stored array
 					int32 pointsUsed = 0;
-			
+
 					for (int32 y = StartY; y <= EndY; y += LOD) {
 						for (int32 x = StartX; x <= EndX; x += LOD) {
 							// Map to old vertex position if available
@@ -553,7 +609,8 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 									static_cast<float>(y - StartY) / SectionSize
 								) * UVScale); // Sample from old vertex
 								pointsUsed++;
-							} else {
+							}
+							else {
 								if (x % OldLOD == 0 && y % OldLOD == 0) {
 									pointsOutsideRange++;
 								}
@@ -571,10 +628,10 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 					if (pointsOutsideRange > 0) {
 						UE_LOG(LogTemp, Display, TEXT("OLD LOD %i, NEW LOD %i ,Points Used %i ,Points Failed %i ,Total Points %i, Sample Factor %i"), Component->GetOldLOD(), Component->GetLOD(), pointsUsed, pointsOutsideRange, vertsAmount, OldLOD);
 					}
-					
+
 				}
 				Component->UnlockMesh();
-				
+
 			}
 			else {
 				for (int32 y = StartY; y <= EndY; y += LOD)
@@ -664,7 +721,7 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 				VertexTangents[i].Normalize();
 				Builder.SetTangent(i, VertexTangents[i]);
 			}
-			
+
 			Component->SetIsActive(true);
 			if (!Component->GetIsInitialised()) {
 				FString ComponentName = FString::Printf(TEXT("MainSection %i"), Component->GetIndex());
@@ -703,19 +760,17 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 		});
 }
 
-void AProceduralTerrain::GeneratePathMesh(int32 offset)
+void AProceduralTerrain::GeneratePathMesh(int32 offset, PathComponent* path)
 {
 
 	////////////////////////////////////
-	TSharedPtr<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>> StoredBuilder = (offset==0)?nullptr:Path->GetPathBuilder();
-	TSharedPtr<FRealtimeMeshStreamSet> StreamSet = (offset == 0) ? MakeShared<FRealtimeMeshStreamSet>(): Path->GetPathStreamSet();
-	auto BuilderPtr = MakeShared<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>>(*StreamSet);
-	auto& Builder = (offset==0) ? *BuilderPtr : *StoredBuilder.Get();
+	FRealtimeMeshStreamSet StreamSet;
+	TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>Builder = TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>(StreamSet);
 
 	Builder.EnableTangents();
 	Builder.EnableTexCoords();
 	Builder.EnablePolyGroups();
-
+	int32 texPos = 0;
 	for (int32 i = offset; i < (PathPoints.Num() - 2); ++i)
 	{
 
@@ -729,20 +784,23 @@ void AProceduralTerrain::GeneratePathMesh(int32 offset)
 		FVector3f Up = FVector3f::UpVector;
 		FVector3f Right = FVector3f::CrossProduct(Up, Forward).GetSafeNormal();
 
+
+
 		TArray<FVector3f> CurrentNextVertexes;
 		int32 IndexOffset = Builder.NumVertices();
 		for (int l = 0; l < (ThicknessDetail * 2) + 1; l++) {
 			float UCoord = static_cast<float>(l) / (ThicknessDetail * 2);
 			float VCoord = i * PathTextureScale;
+			float VCoord2 = (i + 1) * PathTextureScale;
 			if (l == ThicknessDetail) {
 				if (i == 0) {
 					Builder.AddVertex(NextPoint3D).SetTexCoord(FVector2f(UCoord, VCoord));
-					Builder.AddVertex(CurrentPoint3D).SetTexCoord(FVector2f(UCoord, (i + 1) * PathTextureScale));
+					Builder.AddVertex(CurrentPoint3D).SetTexCoord(FVector2f(UCoord, VCoord2));
 					CurrentNextVertexes.Add(NextPoint3D);
 				}
 				else {
 					Builder.AddVertex(NextPoint3D).SetTexCoord(FVector2f(UCoord, VCoord));
-					Builder.AddVertex(LastVertexes[l]).SetTexCoord(FVector2f(UCoord, (i + 1) * PathTextureScale));
+					Builder.AddVertex(LastVertexes[l]).SetTexCoord(FVector2f(UCoord, VCoord2));
 					CurrentNextVertexes.Add(NextPoint3D);
 				}
 			}
@@ -758,11 +816,11 @@ void AProceduralTerrain::GeneratePathMesh(int32 offset)
 					FVector3f StartLeft = FVector3f(StartPoint.X - ((Thickness / ThicknessDetail) * (ThicknessDetail - l)) * Right.X, StartPoint.Y - ((Thickness / ThicknessDetail) * (ThicknessDetail - l)) * Right.Y, StartHeightLeft + HeightAdjust);
 
 					Builder.AddVertex(EndLeft).SetTexCoord(FVector2f(UCoord, VCoord));
-					Builder.AddVertex(StartLeft).SetTexCoord(FVector2f(UCoord, (i + 1) * PathTextureScale));
+					Builder.AddVertex(StartLeft).SetTexCoord(FVector2f(UCoord, VCoord2));
 				}
 				else {
 					Builder.AddVertex(EndLeft).SetTexCoord(FVector2f(UCoord, VCoord));
-					Builder.AddVertex(LastVertexes[l]).SetTexCoord(FVector2f(UCoord, (i + 1) * PathTextureScale));
+					Builder.AddVertex(LastVertexes[l]).SetTexCoord(FVector2f(UCoord, VCoord2));
 				}
 			}
 			else {
@@ -778,11 +836,11 @@ void AProceduralTerrain::GeneratePathMesh(int32 offset)
 					FVector3f StartRight = FVector3f(StartPoint.X + ((Thickness / ThicknessDetail) * (l - ThicknessDetail)) * Right.X, StartPoint.Y + ((Thickness / ThicknessDetail) * (l - ThicknessDetail)) * Right.Y, StartHeightRight + HeightAdjust);
 
 					Builder.AddVertex(EndRight).SetTexCoord(FVector2f(UCoord, VCoord));
-					Builder.AddVertex(StartRight).SetTexCoord(FVector2f(UCoord, (i + 1) * PathTextureScale));
+					Builder.AddVertex(StartRight).SetTexCoord(FVector2f(UCoord, VCoord2));
 				}
 				else {
 					Builder.AddVertex(EndRight).SetTexCoord(FVector2f(UCoord, VCoord));
-					Builder.AddVertex(LastVertexes[l]).SetTexCoord(FVector2f(UCoord, (i + 1) * PathTextureScale));
+					Builder.AddVertex(LastVertexes[l]).SetTexCoord(FVector2f(UCoord, VCoord2));
 				}
 			}
 		}
@@ -791,7 +849,7 @@ void AProceduralTerrain::GeneratePathMesh(int32 offset)
 		for (int j = 0; j < (ThicknessDetail * 2); j++) {
 			int32 point1 = (IndexOffset + 1 + (j * 2));
 			int32 point2 = (IndexOffset + 2 + (j * 2));
-			int32 point3 =(IndexOffset + 0 + (j * 2));
+			int32 point3 = (IndexOffset + 0 + (j * 2));
 
 			int32 point4 = (IndexOffset + 3 + (j * 2));
 			int32 point5 = (IndexOffset + 2 + (j * 2));
@@ -800,77 +858,64 @@ void AProceduralTerrain::GeneratePathMesh(int32 offset)
 			Builder.AddTriangle(point1, point2, point3);
 			Builder.AddTriangle(point4, point5, point6);
 		}
+		texPos += 2;
 
 	}
 
+	int VertsPerPoint = 4;
+	auto FindLODForDistance = [&](int index) -> void
+		{
+			FVector3f getPos = Builder.GetPosition(index);
+			getPos.Z += EdgeHeightOffset;
+			Builder.SetPosition(index, getPos);
 
-	for (int i = prevEnd; i < Builder.NumVertices(); i) {
-		FVector3f getPos = Builder.GetPosition(i);
-		getPos.Z += EdgeHeightOffset;
-		Builder.SetPosition(i, getPos);
-		FVector3f getPos2 = Builder.GetPosition(i+1);
-		getPos2.Z += EdgeHeightOffset;
-		Builder.SetPosition(i+1, getPos2);
-		FVector3f getPosThick = Builder.GetPosition(i + (((ThicknessDetail * 2) + 1) * 2) - 2);
-		getPosThick.Z += EdgeHeightOffset;
-		Builder.SetPosition(i + (((ThicknessDetail * 2) + 1) * 2) - 2, getPosThick);
-		FVector3f getPosThick2 = Builder.GetPosition(i + (((ThicknessDetail * 2) + 1) * 2) - 1);
-		getPosThick2.Z += EdgeHeightOffset;
-		Builder.SetPosition(i + (((ThicknessDetail * 2) + 1) * 2) - 1, getPosThick2);
+			int32 GridX = FMath::FloorToInt(PathPoints[pointCount].X / currentGridSize);
+			int32 GridY = FMath::FloorToInt(PathPoints[pointCount].Y / currentGridSize);
+			FIntPoint Cell = FIntPoint(GridX, GridY);
+			PathVertMap.FindOrAdd(Cell).Add(Builder.GetPosition(index));
+			vertsInPoint++;
+			if (vertsInPoint >= VertsPerPoint) {
+				pointCount++;
+				vertsInPoint = 0;
+			}
+		};
+
+
+	for (int i = 0; i < Builder.NumVertices(); i) {
+		FindLODForDistance(i);
+		FindLODForDistance(i + 1);
+		FindLODForDistance(i + (((ThicknessDetail * 2) + 1) * 2) - 2);
+		FindLODForDistance(i + (((ThicknessDetail * 2) + 1) * 2) - 1);
 
 		i += ((ThicknessDetail * 2) + 1) * 2;
 	}
 
-	int VertsPerPoint = (((ThicknessDetail * 2) + 1) * 2);
-	
-
-	for (int i = prevEnd; i < Builder.NumVertices(); i++) {
-		int32 GridX = FMath::FloorToInt(PathPoints[pointCount].X / currentGridSize);
-		int32 GridY = FMath::FloorToInt(PathPoints[pointCount].Y / currentGridSize);
-		//UE_LOG(LogTemp, Display, TEXT("Point at Grid (%i,%i)"), GridX, GridY);
-		FIntPoint Cell = FIntPoint(GridX, GridY);
-		PathVertMap.FindOrAdd(Cell).Add(Builder.GetPosition(i));
-		vertsInPoint++;
-		if (vertsInPoint >= VertsPerPoint) {
-			pointCount++;
-			vertsInPoint = 0;
-		}
-	}
-	pointCount+=2;
+	pointCount += 2;
 	UE_LOG(LogTemp, Display, TEXT("Points %i, Verts %i, Count %i"), PathPoints.Num(), Builder.NumVertices(), pointCount);
 	//pointCount++;
 	prevEnd = Builder.NumVertices();
 
+	FString ComponentName = FString::Printf(TEXT("Path %i"), path->GetIndex());
+	FString ComponentName2 = FString::Printf(TEXT("PathSection %i"), path->GetIndex());
+	FRealtimeMeshLODKey keyLOD = FRealtimeMeshLODKey::FRealtimeMeshLODKey(0);
+	FRealtimeMeshSectionGroupKey GroupKey = FRealtimeMeshSectionGroupKey::Create(keyLOD, FName(ComponentName));
+	PathRealtimeMesh->CreateSectionGroup(GroupKey, StreamSet);
+	const FRealtimeMeshSectionKey Key = FRealtimeMeshSectionKey::Create(GroupKey, FName(ComponentName2));
+	path->SetGroupKey(GroupKey);
+	path->SetKey(Key);
+	const FRealtimeMeshStreamRange StreamRange(0, Builder.NumVertices() - 1, 0, Builder.NumVertices() - 1);
+	FRealtimeMeshSectionConfig sectionCongig;
+	sectionCongig.bCastsShadow = false;
+	sectionCongig.MaterialSlot = 1;
+	sectionCongig.DrawType = ERealtimeMeshSectionDrawType::Static;
+	PathRealtimeMesh->CreateSection(Key, sectionCongig, StreamRange, true);
+	PathRealtimeMesh->UpdateSectionGroup(GroupKey, StreamSet);
 
-	if (offset == 0) {
-		Path = new PathComponent(nullptr);
-		FString ComponentName = FString::Printf(TEXT("Path"));
-		FString ComponentName2 = FString::Printf(TEXT("PathSection"));
-		FRealtimeMeshLODKey keyLOD = FRealtimeMeshLODKey::FRealtimeMeshLODKey(0);
-		FRealtimeMeshSectionGroupKey GroupKey = FRealtimeMeshSectionGroupKey::Create(keyLOD, FName(ComponentName));
-		RealtimeMesh->CreateSectionGroup(GroupKey, *StreamSet);
-		const FRealtimeMeshSectionKey Key = FRealtimeMeshSectionKey::Create(GroupKey, FName(ComponentName2));
-		Path->SetGroupKey(GroupKey);
-		Path->SetKey(Key);
-		const FRealtimeMeshStreamRange StreamRange(0, Builder.NumVertices() - 1, 0, Builder.NumVertices() - 1);
-		FRealtimeMeshSectionConfig sectionCongig;
-		sectionCongig.bCastsShadow = false;
-		sectionCongig.MaterialSlot = 1;
-		sectionCongig.DrawType = ERealtimeMeshSectionDrawType::Static;
-		RealtimeMesh->CreateSection(Key, sectionCongig, StreamRange, true);
-		RealtimeMesh->UpdateSectionGroup(GroupKey, *StreamSet);
-		Path->SetPathBuilder(BuilderPtr);
-		Path->SetPathStreamset(MoveTemp(StreamSet));
-	}
-	else {
-		FRealtimeMeshSectionConfig sectionCongig;
-		sectionCongig.bCastsShadow = false;
-		sectionCongig.MaterialSlot = 1;
-		sectionCongig.DrawType = ERealtimeMeshSectionDrawType::Static;
-		sectionCongig.bForceOpaque = true;
-		RealtimeMesh->UpdateSectionConfig(Path->GetKey(), sectionCongig, true);
-		RealtimeMesh->UpdateSectionGroup(Path->GetGroupKey(), *StreamSet);
-	}
+}
 
-
+void AProceduralTerrain::RemovePathMesh(PathComponent* path)
+{
+	PathRealtimeMesh->RemoveSection(path->GetKey());
+	PathRealtimeMesh->RemoveSectionGroup(path->GetGroupKey());
+	PathComponents.RemoveAt(0);
 }

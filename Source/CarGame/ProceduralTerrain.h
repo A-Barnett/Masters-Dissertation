@@ -24,12 +24,11 @@
 
 class TerrainComponent {
 private:
-    UProceduralMeshComponent* MeshComponent;
     FVector2D GridPosition;
     int LOD;
     int OldLOD;
     bool IsActive = true;
-    int Index;
+    int32 Index;
     bool IsInitialised = false;
     FRealtimeMeshSectionGroupKey GroupKey;
     FRealtimeMeshSectionKey Key;
@@ -39,15 +38,10 @@ private:
     std::mutex MeshMutex;
 
 public:
-    TerrainComponent(UProceduralMeshComponent* InMeshComponent, FVector2D InGridPosition, int InLOD, int Inindex)
-        : MeshComponent(InMeshComponent), GridPosition(InGridPosition), LOD(InLOD), IsActive(true), Index(Inindex),IsInitialised(false) {
+    TerrainComponent( FVector2D InGridPosition, int InLOD, int32 Inindex)
+        :  GridPosition(InGridPosition), LOD(InLOD), IsActive(true), Index(Inindex),IsInitialised(false) {
     }
-    UProceduralMeshComponent* GetMeshComponent() const {
-        return MeshComponent;
-    }
-    void SetMeshComponent(UProceduralMeshComponent* InMeshComponent) {
-        MeshComponent = InMeshComponent;
-    }
+
     FVector2D GetGridPosition() const {
         return GridPosition;
     }
@@ -66,7 +60,7 @@ public:
     void SetIsActive(bool InIsActive) {
         IsActive = InIsActive;
     }
-    int GetIndex() const {
+    int32 GetIndex() const {
         return Index;
     }
     void SetIndex(int InIndex) {
@@ -129,22 +123,15 @@ public:
 
 class PathComponent {
 private:
-    UProceduralMeshComponent* MeshComponent;
     FRealtimeMeshSectionGroupKey GroupKey;
     FRealtimeMeshSectionKey Key;
-    TSharedPtr<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>> PathBuilder;
-    TSharedPtr<FRealtimeMeshStreamSet> PathStreamSet;
+    int32 Index;
 
 public:
-    PathComponent(UProceduralMeshComponent* InMeshComponent)
-        : MeshComponent(InMeshComponent) {
-    }
-    UProceduralMeshComponent* GetMeshComponent() const {
-        return MeshComponent;
-    }
-    void SetMeshComponent(UProceduralMeshComponent* InMeshComponent) {
-        MeshComponent = InMeshComponent;
-    }
+    PathComponent(int32 IndexIn) {
+        Index = IndexIn;
+    };
+  
     const FRealtimeMeshSectionGroupKey GetGroupKey() {
         return GroupKey;
     }
@@ -158,20 +145,11 @@ public:
     void SetKey(const FRealtimeMeshSectionKey InKey) {
         Key = InKey;
     }
-
-    void SetPathBuilder(TSharedPtr<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>>&& InBuilder) {
-        PathBuilder = MoveTemp(InBuilder);
+    int32 GetIndex() const {
+        return Index;
     }
-
-    TSharedPtr<TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1>> GetPathBuilder() {
-        return PathBuilder;
-    }
-
-    void SetPathStreamset(TSharedPtr<FRealtimeMeshStreamSet> StreamSetIn) {
-        PathStreamSet = MoveTemp(StreamSetIn);
-    }
-    TSharedPtr<FRealtimeMeshStreamSet> GetPathStreamSet() {
-        return PathStreamSet;
+    void SetIndex(int InIndex) {
+        Index = InIndex;
     }
 
 };
@@ -217,7 +195,15 @@ public:
     void RemoveTerrainComponent(TerrainComponent* terrain);
     void ResetPlayerPhysics();
 
+    UPROPERTY()
+    URealtimeMeshComponent* TerrainMeshComponent;
+
+    UPROPERTY()
+    URealtimeMeshComponent* PathMeshComponent;
+
     URealtimeMeshSimple* RealtimeMesh;
+    URealtimeMeshSimple* PathRealtimeMesh;
+
     int totalCreated = 0;
 
     TPair<float, float> randomOffset;
@@ -230,9 +216,9 @@ public:
     { FIntPoint(0, 0), { FVector(0, 0, 0) } }
     };
 
-    UPROPERTY(EditAnywhere, Instanced, Category = "Terrain")
-    TArray<UProceduralMeshComponent*> MeshComponent;
+
     TArray<TerrainComponent*> TerrainComponents;
+    TArray<PathComponent*> PathComponents;
     
     FCriticalSection Mutex;
     FCriticalSection ComponentMutex;
@@ -301,43 +287,9 @@ public:
     UPROPERTY(EditAnywhere, Category = "Path")
     int TurnSize = 100;// How often points to start turn
 
-    UPROPERTY(EditAnywhere, Category = "Path")
-    float SmoothingPasses = 0.5f;
-    UFUNCTION(CallInEditor, Category = "Path")
-    void RemoveTerrain()
-    {
-        randomOffset.Value = rand() % 100000;
-        randomOffset.Key = rand() % 100000;
-
-        // Array to store components to remove
-        TArray<UProceduralMeshComponent*> ProceduralMeshComponents;
-
-        // Iterate through all components of the actor
-        TArray<UActorComponent*> Components;
-        GetComponents(Components);
-
-        for (UActorComponent* Component : Components)
-        {
-            if (UProceduralMeshComponent* ProcMesh = Cast<UProceduralMeshComponent>(Component))
-            {
-                ProceduralMeshComponents.Add(ProcMesh);
-            }
-        }
-
-        // Remove all procedural mesh components
-        for (UProceduralMeshComponent* ProcMesh : ProceduralMeshComponents)
-        {
-            ProcMesh->DestroyComponent();
-        }
-
-        // Clear stored mesh references
-        MeshComponent.Empty();
-
-        UE_LOG(LogTemp, Log, TEXT("All terrain procedural meshes removed."));
-    }
+   
 
     TArray<FVector3f> PathPoints;
-
     TMap<FIntPoint, TArray<FVector3f>> PathGridMap;
     TMap<FIntPoint, TArray<FVector3f>> PathVertMap;
     void GenerateTerrain();
@@ -349,12 +301,12 @@ private:
     FRandomStream RandomStream;
     TArray<FVector3f> LastVertexes;
     int32 pointCount = 0;
-    UProceduralMeshComponent* CurrentMeshComponent;
-    PathComponent* Path;
     int32 pointsGenerated = 0;
-    int32 makePerUpdate = 20;
+    int32 makePerUpdate = 100;
     int32 prevEnd = 0;
-    int vertsInPoint = 0;
+    int32 vertsInPoint = 0;
+    int32 pathUpdateCount = 0;
+    int32 pathComponentsCount = 0;
     float CalculateHeight(int32 X, int32 Y, TArray<FVector3f>* PointsMap, TArray<FVector3f>* VertMap) const;
     float CalculateHeightOnPath(int32 X, int32 Y, TArray<FVector3f>* VertMap) const;
     float CalculateNoiseAtPoint(int32 X, int32 Y) const;
@@ -362,5 +314,6 @@ private:
     bool IsOnPath(int32 X, int32 Y, bool useOffset, TArray<FVector3f>* PointsMap) const;
     float DistFromPath(int32 X, int32 Y, bool useOffset, TArray<FVector3f>* PointsMap) const;
     void GenerateTerrainSection(TerrainComponent* component);
-    void GeneratePathMesh(int32 offset);
+    void GeneratePathMesh(int32 offset, PathComponent* path);
+    void RemovePathMesh(PathComponent* path);
 };
