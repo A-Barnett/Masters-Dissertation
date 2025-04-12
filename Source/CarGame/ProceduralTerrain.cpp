@@ -37,7 +37,7 @@ void AProceduralTerrain::BeginPlay()
 	TerrainComponents.Empty();
 	PathComponents.Empty();
 	PlayerPawn = GetWorld()->GetFirstPlayerController()->GetPawn();
-	currentGridSize = (Width + 1) * Scale;
+	currentGridSize = (Width) * Scale;
 	PlayerGridPos = FVector2D(0, 0);
 	// Create and attach components if not already set
 	TerrainMeshComponent = NewObject<URealtimeMeshComponent>(this, TEXT("TerrainMeshComponent"));
@@ -56,7 +56,6 @@ void AProceduralTerrain::BeginPlay()
 	CollisionConfig.bUseAsyncCook = true;
 	CollisionConfig.bUseComplexAsSimpleCollision = true;
 	CollisionConfig.bShouldFastCookMeshes = true;
-
 	RealtimeMesh->SetCollisionConfig(CollisionConfig);
 	PathRealtimeMesh->SetCollisionConfig(CollisionConfig);
 
@@ -489,7 +488,6 @@ void AProceduralTerrain::GeneratePath(bool start, int32 offset)
 		PathPoints.Add(FinalPoint);
 		int32 GridX = FMath::FloorToInt(FinalPoint.X / currentGridSize);
 		int32 GridY = FMath::FloorToInt(FinalPoint.Y / currentGridSize);
-		UE_LOG(LogTemp, Display, TEXT("Point at Grid (%i,%i)"), GridX, GridY);
 		FIntPoint Cell = FIntPoint(GridX, GridY);
 		PathGridMap.FindOrAdd(Cell).Add(FinalPoint);
 
@@ -500,7 +498,6 @@ void AProceduralTerrain::GeneratePath(bool start, int32 offset)
 void AProceduralTerrain::SmoothPathPointsHeight(float smoothLevel, int32 offset)
 {
 	if (offset != 0) offset--;
-	UE_LOG(LogTemp, Display, TEXT("Offset %i, Points %i"), offset, PathPoints.Num());
 	for (int32 i = 1 + offset; i < (PathPoints.Num()); ++i)
 	{
 		FVector3f& CurrentPoint = PathPoints[i];
@@ -771,6 +768,9 @@ void AProceduralTerrain::GeneratePathMesh(int32 offset, PathComponent* path)
 	Builder.EnableTexCoords();
 	Builder.EnablePolyGroups();
 	int32 texPos = 0;
+	if (offset != 0) {
+		offset -= 1;
+	}
 	for (int32 i = offset; i < (PathPoints.Num() - 2); ++i)
 	{
 
@@ -790,8 +790,8 @@ void AProceduralTerrain::GeneratePathMesh(int32 offset, PathComponent* path)
 		int32 IndexOffset = Builder.NumVertices();
 		for (int l = 0; l < (ThicknessDetail * 2) + 1; l++) {
 			float UCoord = static_cast<float>(l) / (ThicknessDetail * 2);
-			float VCoord = i * PathTextureScale;
-			float VCoord2 = (i + 1) * PathTextureScale;
+			float VCoord = (texPos) * PathTextureScale;
+			float VCoord2 = (texPos+1) * PathTextureScale;
 			if (l == ThicknessDetail) {
 				if (i == 0) {
 					Builder.AddVertex(NextPoint3D).SetTexCoord(FVector2f(UCoord, VCoord));
@@ -858,7 +858,7 @@ void AProceduralTerrain::GeneratePathMesh(int32 offset, PathComponent* path)
 			Builder.AddTriangle(point1, point2, point3);
 			Builder.AddTriangle(point4, point5, point6);
 		}
-		texPos += 2;
+		texPos += 1;
 
 	}
 
@@ -889,11 +889,14 @@ void AProceduralTerrain::GeneratePathMesh(int32 offset, PathComponent* path)
 
 		i += ((ThicknessDetail * 2) + 1) * 2;
 	}
+	if (offset != 0) {
+		pointCount += 1;
+	}
+	else {
+		pointCount += 2;
+	}
+	
 
-	pointCount += 2;
-	UE_LOG(LogTemp, Display, TEXT("Points %i, Verts %i, Count %i"), PathPoints.Num(), Builder.NumVertices(), pointCount);
-	//pointCount++;
-	prevEnd = Builder.NumVertices();
 
 	FString ComponentName = FString::Printf(TEXT("Path %i"), path->GetIndex());
 	FString ComponentName2 = FString::Printf(TEXT("PathSection %i"), path->GetIndex());
@@ -906,7 +909,7 @@ void AProceduralTerrain::GeneratePathMesh(int32 offset, PathComponent* path)
 	const FRealtimeMeshStreamRange StreamRange(0, Builder.NumVertices() - 1, 0, Builder.NumVertices() - 1);
 	FRealtimeMeshSectionConfig sectionCongig;
 	sectionCongig.bCastsShadow = false;
-	sectionCongig.MaterialSlot = 1;
+	sectionCongig.MaterialSlot = 0;
 	sectionCongig.DrawType = ERealtimeMeshSectionDrawType::Static;
 	PathRealtimeMesh->CreateSection(Key, sectionCongig, StreamRange, true);
 	PathRealtimeMesh->UpdateSectionGroup(GroupKey, StreamSet);
