@@ -60,6 +60,7 @@ void AProceduralTerrain::BeginPlay()
 	PathRealtimeMesh->SetCollisionConfig(CollisionConfig);
 
 	GenerateTerrain();
+	PlayerStartPos();
 }
 
 
@@ -83,6 +84,22 @@ void AProceduralTerrain::GenerateTerrain()
 	FTimespan Duration = EndTime - StartTime;
 	UE_LOG(LogTemp, Display, TEXT("TERRAIN GEN COMPLETE IN %f SECONDS"), Duration.GetTotalSeconds());
 }
+
+void AProceduralTerrain::PlayerStartPos() {
+	FVector3f PlayerPos = static_cast<FVector3f>(PlayerPawn->GetActorLocation());
+	FVector3f chosenPoint;
+	float closestDist = INFINITY;
+	for (FVector3f point : PathPoints) {
+		float distance = FVector3f::Distance(PlayerPos, point);
+		if (distance < closestDist) {
+			chosenPoint = point;
+			closestDist = distance;
+		}
+	}
+	chosenPoint.Z += 100.0f;
+	PlayerPawn->SetActorLocation(static_cast<FVector>(chosenPoint), false, nullptr, ETeleportType::TeleportPhysics);
+}
+
 
 // Called every frame
 void AProceduralTerrain::Tick(float DeltaTime)
@@ -783,7 +800,7 @@ void AProceduralTerrain::GeneratePathMesh(int32 offset, PathComponent* path)
 		FVector3f Forward = (NextPoint3D - CurrentPoint3D).GetSafeNormal();
 		FVector3f Up = FVector3f::UpVector;
 		FVector3f Right = FVector3f::CrossProduct(Up, Forward).GetSafeNormal();
-
+	
 
 
 		TArray<FVector3f> CurrentNextVertexes;
