@@ -108,6 +108,12 @@ void AProceduralTerrain::Tick(float DeltaTime)
 	if (GetWorld()->GetFirstPlayerController()->IsInputKeyDown(EKeys::M)) {
 		ResetPlayerPhysics();
 	}
+	if (GetWorld()->GetFirstPlayerController()->IsInputKeyDown(EKeys::N)) {
+		UE_LOG(LogTemp, Display, TEXT("Verts: %i, Triangles %i\n"), totalVerts, totalTris);
+		totalVerts = 0;
+		totalTris = 0;
+	}
+
 
 	FVector PlayerPos = PlayerPawn->GetActorLocation();
 	if (PlayerPos.X > ((PlayerGridPos.X * currentGridSize) + (currentGridSize))) {
@@ -164,6 +170,7 @@ void AProceduralTerrain::ResetPlayerPhysics()
 
 void AProceduralTerrain::UpdateTerrain(bool initial)
 {
+
 	if (!initial && pathUpdateCount >= 5) {
 		GeneratePath(false, pointsGenerated);
 		SmoothPathPointsHeight(PathHeightSmooth, pointsGenerated);
@@ -261,10 +268,12 @@ void AProceduralTerrain::UpdateTerrain(bool initial)
 	}
 
 	// Logging
+
 	UE_LOG(LogTemp, Display, TEXT("New Terrains needed: %i"), terrainsToMake.Num());
 	UE_LOG(LogTemp, Display, TEXT("Old Terrains no longer needed: %i"), terrainsToBeMoved.Num());
 	UE_LOG(LogTemp, Display, TEXT("New Terrains made: %i"), terrainPiecesMade);
 	UE_LOG(LogTemp, Display, TEXT("Total Terrains updated: %i"), ComponentsToUpdate.Num());
+	
 	//for (int i = 0; i < ComponentsToUpdate.Num(); i++) {
 	//	GenerateTerrainSection(ComponentsToUpdate[i]);
 	//}
@@ -659,7 +668,7 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 					}
 				}
 			}
-
+			
 			int triangleCount = 0;
 			for (int32 y = 0; y < SectionSize; y += LOD)
 			{
@@ -678,7 +687,8 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 					triangleCount += 2;
 				}
 			}
-
+			totalVerts += vertsAmount;
+			totalTris += triangleCount;
 
 			// Calculate normals and tangents without using texture coordinates
 			TArray<FVector3f> VertexNormals;
@@ -910,7 +920,8 @@ void AProceduralTerrain::GeneratePathMesh(int32 offset, PathComponent* path)
 		pointCount += 2;
 	}
 	
-
+	totalVerts += Builder.NumVertices();
+	totalTris += Builder.NumTriangles();
 
 	FString ComponentName = FString::Printf(TEXT("Path %i"), path->GetIndex());
 	FString ComponentName2 = FString::Printf(TEXT("PathSection %i"), path->GetIndex());
