@@ -265,13 +265,13 @@ void AProceduralTerrain::UpdateTerrain(bool initial)
 	UE_LOG(LogTemp, Display, TEXT("Old Terrains no longer needed: %i"), terrainsToBeMoved.Num());
 	UE_LOG(LogTemp, Display, TEXT("New Terrains made: %i"), terrainPiecesMade);
 	UE_LOG(LogTemp, Display, TEXT("Total Terrains updated: %i"), ComponentsToUpdate.Num());
-	for (int i = 0; i < ComponentsToUpdate.Num(); i++) {
-		GenerateTerrainSection(ComponentsToUpdate[i]);
-	}
-	//ParallelFor(ComponentsToUpdate.Num(), [this, ComponentsToUpdate](int32 Index)
-	//	{
-	//		GenerateTerrainSection(ComponentsToUpdate[Index]);
-	//	});
+	//for (int i = 0; i < ComponentsToUpdate.Num(); i++) {
+	//	GenerateTerrainSection(ComponentsToUpdate[i]);
+	//}
+	ParallelFor(ComponentsToUpdate.Num(), [this, ComponentsToUpdate](int32 Index)
+		{
+			GenerateTerrainSection(ComponentsToUpdate[Index]);
+		});
 }
 
 
@@ -576,7 +576,7 @@ void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 			if (Component->TryLockMesh() && StoredBuilder.Get() && StoredBuilder.Get()->NumVertices() > 0 && !Component->GetIsNewPos()) {
 				int32 OldLOD = pow(2, Component->GetOldLOD());
 				int32 pointsOutsideRange = 0;
-				if (Component->GetOldLOD() < Component->GetLOD()) {
+				if (updatingInfront) {
 					int32 SamplingFactor = LOD / OldLOD; // Downsample ratio
 					int32 OldvertsPerRow = (SectionSize / OldLOD) + 1;
 					for (int32 y = 0; y < OldvertsPerRow; y += 2) {
