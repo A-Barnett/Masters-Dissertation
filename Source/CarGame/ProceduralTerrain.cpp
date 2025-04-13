@@ -265,10 +265,13 @@ void AProceduralTerrain::UpdateTerrain(bool initial)
 	UE_LOG(LogTemp, Display, TEXT("Old Terrains no longer needed: %i"), terrainsToBeMoved.Num());
 	UE_LOG(LogTemp, Display, TEXT("New Terrains made: %i"), terrainPiecesMade);
 	UE_LOG(LogTemp, Display, TEXT("Total Terrains updated: %i"), ComponentsToUpdate.Num());
-	ParallelFor(ComponentsToUpdate.Num(), [this, ComponentsToUpdate](int32 Index)
-		{
-			GenerateTerrainSection(ComponentsToUpdate[Index]);
-		});
+	for (int i = 0; i < ComponentsToUpdate.Num(); i++) {
+		GenerateTerrainSection(ComponentsToUpdate[i]);
+	}
+	//ParallelFor(ComponentsToUpdate.Num(), [this, ComponentsToUpdate](int32 Index)
+	//	{
+	//		GenerateTerrainSection(ComponentsToUpdate[Index]);
+	//	});
 }
 
 
@@ -310,26 +313,22 @@ float AProceduralTerrain::CalculateNoiseAtPoint(int32 X, int32 Y) const {
 float AProceduralTerrain::CalculateHeightOnPath(int32 X, int32 Y, TArray<FVector3f>* VertMap) const
 {
 	FVector3f p = FVector3f(X * Scale, Y * Scale, 0);
-
-	// Array to hold the 3 closest points and their distances
 	TArray<TPair<float, FVector3f>> ClosestPoints;
-	ClosestPoints.Reserve(3);
+	ClosestPoints.Reserve(5);
 
 	for (const FVector3f& point : *VertMap)
 	{
 		float dist = FVector3f::DistXY(p, point);
 
-		// Insert if we have fewer than 3
-		if (ClosestPoints.Num() < 3)
+		if (ClosestPoints.Num() < 5)
 		{
 			ClosestPoints.Add(TPair<float, FVector3f>(dist, point));
 		}
 		else
 		{
-			// Find the farthest in the 3
 			int32 FarthestIndex = 0;
 			float FarthestDist = ClosestPoints[0].Key;
-			for (int32 i = 1; i < 3; ++i)
+			for (int32 i = 1; i < 5; ++i)
 			{
 				if (ClosestPoints[i].Key > FarthestDist)
 				{
@@ -338,7 +337,6 @@ float AProceduralTerrain::CalculateHeightOnPath(int32 X, int32 Y, TArray<FVector
 				}
 			}
 
-			// Replace if this one is closer
 			if (dist < FarthestDist)
 			{
 				ClosestPoints[FarthestIndex] = TPair<float, FVector3f>(dist, point);
@@ -346,7 +344,6 @@ float AProceduralTerrain::CalculateHeightOnPath(int32 X, int32 Y, TArray<FVector
 		}
 	}
 
-	// Average Z of the 3 closest points
 	if (ClosestPoints.Num() > 0)
 	{
 		float avgZ = 0.0f;
@@ -358,7 +355,6 @@ float AProceduralTerrain::CalculateHeightOnPath(int32 X, int32 Y, TArray<FVector
 		return avgZ - (HeightAdjust * 2.0f);
 	}
 
-	// Fallback if no points
 	return 0.0f;
 }
 
@@ -527,8 +523,9 @@ void AProceduralTerrain::SmoothPathPointsHeight(float smoothLevel, int32 offset)
 
 void AProceduralTerrain::GenerateTerrainSection(TerrainComponent* Component)
 {
+	bool updatingInfront = Component->GetOldLOD() < Component->GetLOD();
 	// Launch async task for heavy computation
-	Async(EAsyncExecution::ThreadPool, [=, this]()
+	AsyncTask(updatingInfront? ENamedThreads::AnyHiPriThreadHiPriTask : ENamedThreads::AnyBackgroundHiPriTask, [=, this]()
 		{
 
 			////////////////////////////////////
